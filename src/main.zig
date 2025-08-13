@@ -27,7 +27,7 @@ pub fn main() !void {
     var dev = alldevs;
     while (dev) |d| {
         if (std.mem.eql(u8, std.mem.span(d.name), args.device)) {
-            const chan = c.pcap_create("en0", &errbuf);
+            const chan = c.pcap_create(@ptrCast(args.device), &errbuf);
             if (chan == null) {
                 std.debug.print("channel was null\n", .{});
                 return;
