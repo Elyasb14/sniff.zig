@@ -5,6 +5,34 @@ const c = @cImport({
     @cInclude("pcap.h");
 });
 
+const Packet = struct {
+    src_addr: [4]u8,
+    dst_addr: [4]u8,
+
+    pub fn init(dlt: c_int, buf: [*c]const u8) ?Packet {
+        var pkt = Packet{
+            .src_addr = [_]u8{0} ** 4,
+            .dst_addr = [_]u8{0} ** 4,
+        };
+
+        switch (dlt) {
+            1 => { // Ethernet
+                // IPv4 header starts after 14-byte Ethernet header
+                const ip_header = buf[14..];
+                @memcpy(&pkt.src_addr, ip_header[12..16]);
+                @memcpy(&pkt.dst_addr, ip_header[16..20]);
+            },
+            12 => { // Raw IPv4 (no Ethernet)
+                @memcpy(&pkt.src_addr, buf[12..16]);
+                @memcpy(&pkt.dst_addr, buf[16..20]);
+            },
+            else => return null,
+        }
+
+        return pkt;
+    }
+};
+
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -40,9 +68,9 @@ pub fn main() !void {
                 c.pcap_close(chan);
                 return;
             }
-            const datalink = c.pcap_datalink(chan);
-            std.debug.print("Link-layer type: {d} ({s})\n", .{
-                datalink, c.pcap_datalink_val_to_name(datalink),
+            const dlt = c.pcap_datalink(chan);
+            std.debug.print("Link-layer type: {any} ({s})\n", .{
+                dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
             while (true) {
@@ -53,10 +81,11 @@ pub fn main() !void {
                 switch (res) {
                     1 => {
                         // We got a valid packet
-                        std.debug.print("len={d} caplen={d} first_byte={x}\n", .{
+                        const pack = Packet.init(dlt, packet);
+                        std.debug.print("len={d} caplen={d} info={d}\n", .{
                             header.*.len,
                             header.*.caplen,
-                            packet[0], // first byte of packet
+                            pack.?.src_addr,
                         });
                     },
                     0 => {
@@ -64,15 +93,15 @@ pub fn main() !void {
                         continue;
                     },
                     -1 => {
-                        std.debug.print("Error: {s}\n", .{c.pcap_geterr(chan)});
+                        std.log.err("Error: {s}", .{c.pcap_geterr(chan)});
                         break;
                     },
                     -2 => {
-                        std.debug.print("EOF\n", .{});
+                        std.log.err("EOF", .{});
                         break;
                     },
                     else => {
-                        std.debug.print("Unexpected return {d}\n", .{res});
+                        std.log.err("Unexpected return {d}", .{res});
                         break;
                     },
                 }
