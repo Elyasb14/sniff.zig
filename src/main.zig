@@ -6,16 +6,16 @@ const c = @cImport({
 });
 
 const IpVersion = enum(u8) {
-    IPv4 = 4,
-    IPv6 = 6,
+    IPV4 = 4,
+    IPV6 = 6,
 };
 
 const Packet = struct {
     // link layer
     datalink: c_int,
-    ip_version: ?IpVersion, // null if not an IP packet
-    src_mac: [6]u8,
     dst_mac: [6]u8,
+    src_mac: [6]u8,
+    ip_version: ?IpVersion, // null if not an IP packet
 
     // network layer
     src_addr: [4]u8,
@@ -28,49 +28,56 @@ const Packet = struct {
     dst_port: ?u16,
 
     // metadata
-    payload: []const u8,
+    buf: []const u8,
     len: u32,
     ts: c.struct_timeval,
 
-    pub fn init(dlt: c_int, packet: [*c]const u8, header: *c.struct_pcap_pkthdr) ?Packet {
+    pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr) ?Packet {
         var pkt = Packet{
             .datalink = dlt,
             .ip_version = undefined,
-            .src_mac = [_]u8{0} ** 6,
             .dst_mac = [_]u8{0} ** 6,
+            .src_mac = [_]u8{0} ** 6,
             .src_addr = [_]u8{0} ** 4,
             .dst_addr = [_]u8{0} ** 4,
             .protocol = null,
             .ttl = null,
             .src_port = null,
             .dst_port = null,
-            .payload = std.mem.span(packet),
+            .buf = std.mem.span(buf),
             .len = header.*.len,
             .ts = header.*.ts,
         };
 
         switch (dlt) {
             0 => { //loopback
-                @memcpy(&pkt.src_addr, packet[12..16]);
-                @memcpy(&pkt.dst_addr, packet[16..20]);
+                @memcpy(&pkt.src_addr, buf[12..16]);
+                @memcpy(&pkt.dst_addr, buf[16..20]);
             },
             1 => { // Ethernet
-                // IPv4 header starts after 14-byte Ethernet header
-                const ip_header = packet[14..];
+                @memcpy(&pkt.dst_mac, buf[0..6]);
+                @memcpy(&pkt.src_mac, buf[6..12]);
 
-                @memcpy(&pkt.src_mac, packet[0..6]);
+                const version = buf[14] >> 4;
+                pkt.ip_version = if (version == 4) .IPV4 else if (version == 6) .IPV6 else null;
 
-                @memcpy(&pkt.src_addr, ip_header[12..16]);
-                @memcpy(&pkt.dst_addr, ip_header[16..20]);
+                @memcpy(&pkt.src_addr, buf[14..18]);
+                @memcpy(&pkt.dst_addr, buf[18..22]);
             },
             12 => { // Raw IPv4 (no Ethernet)
-                @memcpy(&pkt.src_addr, packet[12..16]);
-                @memcpy(&pkt.dst_addr, packet[16..20]);
+                @memcpy(&pkt.src_addr, buf[12..16]);
+                @memcpy(&pkt.dst_addr, buf[16..20]);
             },
             else => return null,
         }
 
         return pkt;
+    }
+
+    pub fn pp(self: Packet) void {
+        inline for (@typeInfo(@TypeOf(self)).@"struct".fields) |field| {
+            std.debug.print("Field Name: {s}, Field Type: {any}\n", .{ field.name, field.type });
+        }
     }
 };
 
@@ -115,21 +122,15 @@ pub fn main() !void {
             });
 
             while (true) {
-                var header: [*c]c.struct_pcap_pkthdr = undefined;
-                var packet: [*c]const u8 = undefined;
+                var hdr: [*c]c.struct_pcap_pkthdr = undefined;
+                var buf: [*c]const u8 = undefined;
 
-                const res = c.pcap_next_ex(chan, &header, &packet);
+                const res = c.pcap_next_ex(chan, &hdr, &buf);
                 switch (res) {
                     1 => {
                         // We got a valid packet
-                        const pack = Packet.init(dlt, packet, @ptrCast(header));
-                        for (pack.?.src_mac) |x| std.debug.print("{x}\n", .{x});
-                        std.debug.print("len={d} caplen={d} src_addr={d} src_mac= {any}\n", .{
-                            header.*.len,
-                            header.*.caplen,
-                            pack.?.src_addr,
-                            pack.?.src_mac,
-                        });
+                        const pkt = Packet.init(dlt, buf, @ptrCast(hdr)) orelse undefined;
+                        pkt.pp();
                     },
                     0 => {
                         // No packet available yet (nonblocking)
