@@ -55,7 +55,7 @@ pub fn main() !void {
                     1 => {
                         // We got a valid packet
                         const pkt = Packet.init(dlt, buf, @ptrCast(hdr)) orelse undefined;
-                        std.debug.print("{any}\n", .{pkt});
+                        std.debug.print("dst addr: {any}\nid: {any}\n", .{ pkt.dst_addr, pkt.id });
                     },
                     0 => {
                         // No packet available yet (nonblocking)
