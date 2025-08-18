@@ -47,22 +47,33 @@ pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr) ?Packe
     };
 
     switch (dlt) {
-        0 => {},
+        // full ethernet (e.g. en0)
         1 => {
-            // ethernet
+            // Ethernet
             @memcpy(&pkt.dst_mac, buf[0..6]);
             @memcpy(&pkt.src_mac, buf[6..12]);
 
-            // ipv4
-            const version = buf[12..14];
-            pkt.ip_version = if ((version[0] >> 4) == 4) .IPV4 else if ((version[0] >> 4) == 6) .IPV6 else null;
+            const ether_type: u16 = (@as(u16, buf[12]) << 8) | buf[13];
+            if (ether_type != 0x0800) return null; // Not IPv4
 
-            @memcpy(&pkt.id, buf[18..20]);
+            // IPV4 header starts at offset 14
+            const ip_header = buf[14..];
 
-            @memcpy(&pkt.src_addr, buf[26..30]);
-            @memcpy(&pkt.dst_addr, buf[30..34]);
+            pkt.ip_version = switch (ip_header[0] >> 4) {
+                4 => .IPV4,
+                6 => .IPV6,
+                else => return null,
+            };
+
+            @memcpy(&pkt.id, ip_header[4..6]);
+            pkt.ttl = ip_header[8];
+            pkt.protocol = ip_header[9];
+
+            @memcpy(&pkt.checksum, ip_header[10..12]);
+
+            @memcpy(&pkt.src_addr, ip_header[12..16]);
+            @memcpy(&pkt.dst_addr, ip_header[16..20]);
         },
-        12 => {},
         else => return null,
     }
 
