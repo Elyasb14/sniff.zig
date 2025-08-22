@@ -79,3 +79,11 @@ pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr) ?Packe
 
     return pkt;
 }
+
+pub fn pp(packet: Packet) !void {
+    const stdout = std.io.getStdOut().writer();
+    const dst_addr = packet.dst_addr;
+    const src_addr = packet.src_addr;
+    try stdout.print("dst addr: {d}.{d}.{d}.{d}\n", .{ dst_addr[0], dst_addr[1], dst_addr[2], dst_addr[3] });
+    try stdout.print("src addr: {d}.{d}.{d}.{d}\n", .{ src_addr[0], src_addr[1], src_addr[2], src_addr[3] });
+}
