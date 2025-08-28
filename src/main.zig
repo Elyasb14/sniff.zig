@@ -7,6 +7,7 @@ const c = @cImport({
 });
 
 pub fn main() !void {
+    // setup
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -42,7 +43,7 @@ pub fn main() !void {
                 return;
             }
             const dlt = c.pcap_datalink(chan);
-            std.debug.print("Link-layer type: {any} ({s})\n", .{
+            std.log.info("Link-layer type: {any} ({s})", .{
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
@@ -54,15 +55,20 @@ pub fn main() !void {
                 switch (res) {
                     1 => {
                         // We got a valid packet
-                        const pkt = Packet.init(dlt, buf, @ptrCast(hdr)) orelse undefined;
-                        try pkt.pp();
+
+                        if (Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
+                            try pkt.pp();
+                        } else {
+                            std.log.err("\x1b[31mPacket could not parse, got null\x1b[0m", .{});
+                            continue;
+                        }
                     },
                     0 => {
                         // No packet available yet (nonblocking)
                         continue;
                     },
                     -1 => {
-                        std.log.err("Error: {s}", .{c.pcap_geterr(chan)});
+                        std.log.err("\x1b[31m" ++ "{s}" ++ "\x1b[0m", .{c.pcap_geterr(chan)});
                         break;
                     },
                     -2 => {
