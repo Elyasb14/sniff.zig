@@ -1,10 +1,15 @@
 const std = @import("std");
 const Args = @import("Args.zig");
-const Packet = @import("Packet.zig");
+const packet = @import("packet.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
 });
+
+const PCAP_OK = 1;
+const PCAP_TIMEOUT = 0;
+const PCAP_ERROR = -1;
+const PCAP_EOF = -2;
 
 pub fn main() !void {
     // setup
@@ -53,25 +58,22 @@ pub fn main() !void {
 
                 const res = c.pcap_next_ex(chan, &hdr, &buf);
                 switch (res) {
-                    1 => {
+                    PCAP_OK => {
                         // We got a valid packet
 
-                        if (Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
+                        if (packet.Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
                             try pkt.pp();
                         } else {
                             std.log.err("\x1b[31mPacket could not parse, got null\x1b[0m", .{});
                             continue;
                         }
                     },
-                    0 => {
-                        // No packet available yet (nonblocking)
-                        continue;
-                    },
-                    -1 => {
+                    PCAP_TIMEOUT => continue, // No packet available yet (nonblocking)
+                    PCAP_ERROR => {
                         std.log.err("\x1b[31m" ++ "{s}" ++ "\x1b[0m", .{c.pcap_geterr(chan)});
                         break;
                     },
-                    -2 => {
+                    PCAP_EOF => {
                         std.log.err("EOF", .{});
                         break;
                     },
