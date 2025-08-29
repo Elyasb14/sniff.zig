@@ -64,7 +64,6 @@ pub fn main() !void {
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
                             try pkt.pp();
                         } else {
-                            std.log.err("\x1b[31mPacket could not parse, got null\x1b[0m", .{});
                             continue;
                         }
                     },
