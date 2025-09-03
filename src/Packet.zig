@@ -37,8 +37,8 @@ pub const TcpHeader = struct {
     window_size: u16,
     checksum: u16,
     urgent_pointer: u16,
-    options: ?[]const u8,
-    // Options may follow if data_offset > 5
+    options: ?[]const u8, // null if header_length <= 20
+
     pub fn data_offset(self: TcpHeader) u16 {
         // In 32-bit words, so multiply by 4 to get bytes
         return self.data_offset_reserved_flags >> 12 & 0xF;
@@ -165,6 +165,9 @@ pub const Packet = struct {
 
     fn parse_ipv4(self: *Packet, buf: [*c]const u8) void {
         const version_ihl = buf[0];
+        const ihl = version_ihl & 0x0F; // low 4 bits
+        const hdr_len = ihl * 4;
+
         const descp_ecn = buf[1];
         const total_length = (@as(u16, buf[2]) << 8) | buf[3];
         const id = buf[4..6];
@@ -189,14 +192,17 @@ pub const Packet = struct {
         };
         self.ipv4 = ipv4_hdr;
 
+        // Skip past IPv4 header (ihl * 4, not always 20)
+        const payload = buf[hdr_len..];
+
         if (self.ipv4 != null) {
-            switch (self.ipv4.?.protocol) {
-                6 => self.parse_tcp(buf[20..]),
-                17 => self.parse_udp(buf[20..]),
-                1 => self.parse_icmp(buf[20..]),
+            switch (protocol) {
+                6 => self.parse_tcp(payload),
+                17 => self.parse_udp(payload),
+                1 => self.parse_icmp(payload),
                 else => return,
             }
-        } else return;
+        }
     }
 
     fn parse_tcp(self: *Packet, buf: [*c]const u8) void {
