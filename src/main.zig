@@ -39,7 +39,12 @@ pub fn main() !void {
                 std.debug.print("channel was null\n", .{});
                 return;
             }
-
+            // Add after pcap_create but before pcap_activate
+            if (c.pcap_set_promisc(chan, 0) != 0) {
+                std.debug.print("Failed to disable promiscuous mode\n", .{});
+                c.pcap_close(chan);
+                return;
+            }
             //NOTE: we set nonblocking here, can also set timeout if we want
             _ = c.pcap_setnonblock(chan, 1, &errbuf);
             if (c.pcap_activate(chan) != 0) {
@@ -62,7 +67,11 @@ pub fn main() !void {
                         // We got a valid packet
 
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
-                            try pkt.pp();
+                            // try pkt.pp();
+                            if (pkt.tcp) |tcp| {
+                                const flags = tcp.parse_flags();
+                                std.debug.print("FLAGS: {any}\n", .{flags});
+                            }
                         } else {
                             continue;
                         }

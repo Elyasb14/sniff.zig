@@ -38,6 +38,31 @@ pub const TcpHeader = packed struct {
     checksum: u16,
     urgent_pointer: u16,
     // Options may follow if data_offset > 5
+
+    pub fn parse_flags(self: TcpHeader) TcpFlags {
+        const flags = self.data_offset_reserved_flags & 0x1FF;
+        return TcpFlags{
+            .FIN = (flags & 0x001) != 0,
+            .SYN = (flags & 0x002) != 0,
+            .RST = (flags & 0x004) != 0,
+            .PSH = (flags & 0x008) != 0,
+            .ACK = (flags & 0x010) != 0,
+            .URG = (flags & 0x020) != 0,
+            .ECE = (flags & 0x040) != 0,
+            .CWR = (flags & 0x080) != 0,
+        };
+    }
+};
+
+const TcpFlags = struct {
+    CWR: bool,
+    ECE: bool,
+    URG: bool,
+    ACK: bool,
+    PSH: bool,
+    RST: bool,
+    SYN: bool,
+    FIN: bool,
 };
 
 const UdpHeader = packed struct {
@@ -106,9 +131,22 @@ pub const Packet = struct {
                     },
                 }
             },
+            c.DLT_NULL => {
+                // 4-byte pseudo-header
+                const family = std.mem.readInt(u32, buf[0..4], .little);
+                switch (family) {
+                    2 => {
+                        pkt.parse_ipv4(buf[4..]);
+                    }, // AF_INET
+                    24 => {
+                        std.log.err("IPv6 not supported", .{});
+                        return null;
+                    },
+                    else => return null,
+                }
+            },
             else => return null,
         }
-
         return pkt;
     }
 
@@ -149,8 +187,8 @@ pub const Packet = struct {
     }
 
     fn parse_tcp(self: *Packet, buf: [*c]const u8) void {
-        const dst_port = std.mem.readInt(u16, buf[0..2], .big);
-        const src_port = std.mem.readInt(u16, buf[2..4], .big);
+        const src_port = std.mem.readInt(u16, buf[0..2], .big);
+        const dst_port = std.mem.readInt(u16, buf[2..4], .big);
         const seq_number = std.mem.readInt(u32, buf[4..8], .big);
         const ack_number = std.mem.readInt(u32, buf[8..12], .big);
         const data_offset_reserved_flags = std.mem.readInt(u16, buf[12..14], .big);
@@ -258,7 +296,7 @@ pub const Packet = struct {
                     try stdout.print("  checksum: 0x{x}\n", .{udp.checksum});
                 },
                 1 => if (packet.icmp) |icmp| {
-                    try stdout.print("ICMP:\n", .{});
+                    try stdout.print("ICMP\n", .{});
                     try stdout.print("  icmp type: {d}\n", .{icmp.type});
                 },
                 else => try stdout.print("Transport: protocol {d} not parsed\n", .{ip.protocol}),
