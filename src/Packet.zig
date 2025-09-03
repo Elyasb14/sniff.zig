@@ -286,7 +286,12 @@ pub const Packet = struct {
                     try stdout.print("  seq number: {d}\n", .{tcp.seq_number});
                     try stdout.print("  ack number: {d}\n", .{tcp.ack_number});
                     try stdout.print("  data offset: {d} (header {d} bytes)\n", .{ data_offset, data_offset * 4 });
-                    try stdout.print("  flags: {any}\n", .{flags});
+                    try stdout.print("  flags: ", .{});
+                    inline for (std.meta.fields(TcpFlags)) |field| {
+                        if (@field(flags, field.name))
+                            try stdout.print("{s} ", .{field.name});
+                    }
+                    try stdout.print("\n", .{});
                     try stdout.print("  window size: {d}\n", .{tcp.window_size});
                     try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
                     try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});
