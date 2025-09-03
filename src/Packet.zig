@@ -39,17 +39,20 @@ pub const TcpHeader = packed struct {
     urgent_pointer: u16,
     // Options may follow if data_offset > 5
 
+    /// we parse ints in big endian
+    /// the masks for these flags are not in the usual order as a result
+    /// https://datatracker.ietf.org/doc/html/rfc9293#section-3.1
     pub fn parse_flags(self: TcpHeader) TcpFlags {
         const flags = self.data_offset_reserved_flags & 0x1FF;
         return TcpFlags{
-            .FIN = (flags & 0x001) != 0,
-            .SYN = (flags & 0x002) != 0,
-            .RST = (flags & 0x004) != 0,
-            .PSH = (flags & 0x008) != 0,
-            .ACK = (flags & 0x010) != 0,
-            .URG = (flags & 0x020) != 0,
-            .ECE = (flags & 0x040) != 0,
-            .CWR = (flags & 0x080) != 0,
+            .FIN = (flags & 0x001) != 0, // bit 0
+            .SYN = (flags & 0x002) != 0, // bit 1
+            .RST = (flags & 0x004) != 0, // bit 2
+            .PSH = (flags & 0x008) != 0, // bit 3
+            .ACK = (flags & 0x010) != 0, // bit 4
+            .URG = (flags & 0x020) != 0, // bit 5
+            .ECE = (flags & 0x040) != 0, // bit 6
+            .CWR = (flags & 0x080) != 0, // bit 7
         };
     }
 };
@@ -136,7 +139,7 @@ pub const Packet = struct {
                 const family = std.mem.readInt(u32, buf[0..4], .little);
                 switch (family) {
                     2 => {
-                        pkt.parse_ipv4(buf[4..]);
+                        pkt.parse_ipv4((buf[4..]));
                     }, // AF_INET
                     24 => {
                         std.log.err("IPv6 not supported", .{});
@@ -275,7 +278,7 @@ pub const Packet = struct {
             switch (ip.protocol) {
                 6 => if (packet.tcp) |tcp| {
                     const data_offset = (tcp.data_offset_reserved_flags >> 12) & 0xF;
-                    const flags = tcp.data_offset_reserved_flags & 0x1FF;
+                    const flags = tcp.parse_flags();
 
                     try stdout.print("TCP:\n", .{});
                     try stdout.print("  src port: {d}\n", .{tcp.src_port});
@@ -283,7 +286,7 @@ pub const Packet = struct {
                     try stdout.print("  seq number: {d}\n", .{tcp.seq_number});
                     try stdout.print("  ack number: {d}\n", .{tcp.ack_number});
                     try stdout.print("  data offset: {d} (header {d} bytes)\n", .{ data_offset, data_offset * 4 });
-                    try stdout.print("  flags: 0b{b:09}\n", .{flags});
+                    try stdout.print("  flags: {any}\n", .{flags});
                     try stdout.print("  window size: {d}\n", .{tcp.window_size});
                     try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
                     try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});

@@ -67,11 +67,7 @@ pub fn main() !void {
                         // We got a valid packet
 
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
-                            // try pkt.pp();
-                            if (pkt.tcp) |tcp| {
-                                const flags = tcp.parse_flags();
-                                std.debug.print("FLAGS: {any}\n", .{flags});
-                            }
+                            try pkt.pp();
                         } else {
                             continue;
                         }
