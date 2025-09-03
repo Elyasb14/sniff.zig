@@ -1,6 +1,6 @@
 const std = @import("std");
 const Args = @import("Args.zig");
-const packet = @import("packet.zig");
+const transport = @import("transport.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -66,7 +66,7 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
 
-                        if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
+                        if (transport.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
                             try pkt.pp();
                         } else {
                             continue;

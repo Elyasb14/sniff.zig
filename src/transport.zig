@@ -3,6 +3,13 @@ const c = @cImport({
     @cInclude("pcap.h");
 });
 
+const Transport = union(enum) {
+    tcp: TcpHeader,
+    udp: UdpHeader,
+    icmp: IcmpHeader,
+    unknown: []const u8,
+};
+
 const IpVersion = enum(u8) {
     IPV4 = 4,
     IPV6 = 6,
@@ -25,6 +32,7 @@ pub const Ipv4Header = struct {
     header_checksum: u16,
     src_addr: []const u8 = undefined,
     dst_addr: []const u8 = undefined,
+    options: ?[]const u8,
     // Options may follow if IHL > 5 (rare in modern traffic, usually safe to ignore)
 };
 
@@ -38,6 +46,7 @@ pub const TcpHeader = struct {
     checksum: u16,
     urgent_pointer: u16,
     options: ?[]const u8, // null if header_length <= 20
+    payload: []const u8 = undefined,
 
     pub fn data_offset(self: TcpHeader) u16 {
         // In 32-bit words, so multiply by 4 to get bytes
@@ -66,7 +75,7 @@ pub const TcpHeader = struct {
     }
 };
 
-const TcpFlags = packed struct {
+const TcpFlags = struct {
     CWR: bool,
     ECE: bool,
     URG: bool,
@@ -77,17 +86,19 @@ const TcpFlags = packed struct {
     FIN: bool,
 };
 
-const UdpHeader = packed struct {
+const UdpHeader = struct {
     src_port: u16,
     dst_port: u16,
     length: u16, // header + data
     checksum: u16,
+    payload: []const u8 = undefined,
 };
 
-const IcmpHeader = packed struct {
+const IcmpHeader = struct {
     type: u8,
     code: u8,
     checksum: u16,
+    payload: []const u8,
 };
 
 pub const Packet = struct {
@@ -98,12 +109,9 @@ pub const Packet = struct {
 
     ethernet: ?EthernetHeader,
     ipv4: ?Ipv4Header, // null if not IPv4
-    tcp: ?TcpHeader, // null unless protocol == 6
-    udp: ?UdpHeader, // null unless protocol == 17
-    icmp: ?IcmpHeader, // null unless protocol == 1
-
+    transport: ?Transport,
     pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr, endianess: std.builtin.Endian) ?Packet {
-        var pkt = Packet{ .datalink = dlt, .ts = header.ts, .caplen = header.caplen, .endianess = endianess, .ethernet = null, .ipv4 = null, .tcp = null, .udp = null, .icmp = null };
+        var pkt = Packet{ .datalink = dlt, .ts = header.ts, .caplen = header.caplen, .endianess = endianess, .ethernet = null, .ipv4 = null, .transport = null };
 
         switch (dlt) {
             // Ethernet (DLT_EN10MB)
@@ -177,6 +185,7 @@ pub const Packet = struct {
         const cksm = buf[10..12];
         const src_addr = buf[12..16];
         const dst_addr = buf[16..20];
+        const options: ?[]const u8 = if (hdr_len > 20) buf[20..hdr_len] else null;
 
         const ipv4_hdr = Ipv4Header{
             .version_ihl = version_ihl,
@@ -189,9 +198,9 @@ pub const Packet = struct {
             .header_checksum = std.mem.readInt(u16, cksm, .big),
             .src_addr = src_addr,
             .dst_addr = dst_addr,
+            .options = options,
         };
         self.ipv4 = ipv4_hdr;
-
         // Skip past IPv4 header (ihl * 4, not always 20)
         const payload = buf[hdr_len..];
 
@@ -233,7 +242,9 @@ pub const Packet = struct {
         } else {
             tcp_hdr.options = null;
         }
-        self.tcp = tcp_hdr;
+
+        tcp_hdr.payload = std.mem.span(buf[hdr_len..]);
+        self.transport = Transport{ .tcp = tcp_hdr };
     }
 
     fn parse_udp(self: *Packet, buf: [*c]const u8) void {
@@ -241,29 +252,33 @@ pub const Packet = struct {
         const dst_port = std.mem.readInt(u16, buf[2..4], self.endianess);
         const len = std.mem.readInt(u16, buf[4..6], self.endianess);
         const cksum = std.mem.readInt(u16, buf[6..8], self.endianess);
+        const payload = buf[8..len];
 
         const udp_hdr = UdpHeader{
             .src_port = src_port,
             .dst_port = dst_port,
             .length = len,
             .checksum = cksum,
+            .payload = payload,
         };
 
-        self.udp = udp_hdr;
+        self.transport = Transport{ .udp = udp_hdr };
     }
 
     fn parse_icmp(self: *Packet, buf: [*c]const u8) void {
         const icmp_type = buf[0];
         const code = buf[1];
         const cksum = std.mem.readInt(u16, buf[2..4], self.endianess);
+        const payload = std.mem.span(buf[4..]);
 
         const icmp_hdr = IcmpHeader{
             .type = icmp_type,
             .code = code,
             .checksum = cksum,
+            .payload = payload,
         };
 
-        self.icmp = icmp_hdr;
+        self.transport = Transport{ .icmp = icmp_hdr };
     }
 
     pub fn pp(packet: Packet) !void {
@@ -296,43 +311,47 @@ pub const Packet = struct {
             try stdout.print("  checksum: 0x{x}\n", .{ip.header_checksum});
             try stdout.print("  src addr: {d}.{d}.{d}.{d}\n", .{ ip.src_addr[0], ip.src_addr[1], ip.src_addr[2], ip.src_addr[3] });
             try stdout.print("  dst addr: {d}.{d}.{d}.{d}\n", .{ ip.dst_addr[0], ip.dst_addr[1], ip.dst_addr[2], ip.dst_addr[3] });
+            if (ip.options) |opt| try stdout.print("  options: {any}\n", .{opt});
 
-            // --- Transport ---
-            switch (ip.protocol) {
-                6 => if (packet.tcp) |tcp| {
-                    const data_offset = (tcp.data_offset_reserved_flags >> 12) & 0xF;
-                    const flags = tcp.parse_flags();
+            if (packet.transport) |transport|
+                switch (transport) {
+                    .tcp => |tcp| {
+                        const data_offset = (tcp.data_offset_reserved_flags >> 12) & 0xF;
+                        const flags = tcp.parse_flags();
 
-                    try stdout.print("TCP:\n", .{});
-                    try stdout.print("  src port: {d}\n", .{tcp.src_port});
-                    try stdout.print("  dst port: {d}\n", .{tcp.dst_port});
-                    try stdout.print("  seq number: {d}\n", .{tcp.seq_number});
-                    try stdout.print("  ack number: {d}\n", .{tcp.ack_number});
-                    try stdout.print("  data offset: {d} (header {d} bytes)\n", .{ data_offset, data_offset * 4 });
-                    try stdout.print("  flags: ", .{});
-                    inline for (std.meta.fields(TcpFlags)) |field| {
-                        if (@field(flags, field.name))
-                            try stdout.print("{s} ", .{field.name});
-                    }
-                    try stdout.print("\n", .{});
-                    try stdout.print("  window size: {d}\n", .{tcp.window_size});
-                    try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
-                    try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});
-                    if (tcp.options) |opt| try stdout.print("  options: {any}\n", .{opt});
-                },
-                17 => if (packet.udp) |udp| {
-                    try stdout.print("UDP:\n", .{});
-                    try stdout.print("  src port: {d}\n", .{udp.src_port});
-                    try stdout.print("  dst port: {d}\n", .{udp.dst_port});
-                    try stdout.print("  length: {d}\n", .{udp.length});
-                    try stdout.print("  checksum: 0x{x}\n", .{udp.checksum});
-                },
-                1 => if (packet.icmp) |icmp| {
-                    try stdout.print("ICMP\n", .{});
-                    try stdout.print("  icmp type: {d}\n", .{icmp.type});
-                },
-                else => try stdout.print("Transport: protocol {d} not parsed\n", .{ip.protocol}),
-            }
+                        try stdout.print("TCP:\n", .{});
+                        try stdout.print("  src port: {d}\n", .{tcp.src_port});
+                        try stdout.print("  dst port: {d}\n", .{tcp.dst_port});
+                        try stdout.print("  seq number: {d}\n", .{tcp.seq_number});
+                        try stdout.print("  ack number: {d}\n", .{tcp.ack_number});
+                        try stdout.print("  data offset: {d} (header {d} bytes)\n", .{ data_offset, data_offset * 4 });
+                        try stdout.print("  flags: ", .{});
+                        inline for (std.meta.fields(TcpFlags)) |field| {
+                            if (@field(flags, field.name))
+                                try stdout.print("{s} ", .{field.name});
+                        }
+                        try stdout.print("\n", .{});
+                        try stdout.print("  window size: {d}\n", .{tcp.window_size});
+                        try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
+                        try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});
+                        if (tcp.options) |opt| try stdout.print("  options: {any}\n", .{opt});
+                        try stdout.print("  payload: {any}\n", .{tcp.payload});
+                    },
+                    .udp => |udp| {
+                        try stdout.print("UDP:\n", .{});
+                        try stdout.print("  src port: {d}\n", .{udp.src_port});
+                        try stdout.print("  dst port: {d}\n", .{udp.dst_port});
+                        try stdout.print("  length: {d}\n", .{udp.length});
+                        try stdout.print("  checksum: 0x{x}\n", .{udp.checksum});
+                        try stdout.print("  payload: {any}\n", .{udp.payload});
+                    },
+                    .icmp => |icmp| {
+                        try stdout.print("ICMP\n", .{});
+                        try stdout.print("  icmp type: {d}\n", .{icmp.type});
+                        try stdout.print("  payload: {any}\n", .{icmp.payload});
+                    },
+                    else => try stdout.print("Transport: protocol {d} not parsed\n", .{ip.protocol}),
+                };
         }
 
         try stdout.print("================ END OF PACKET =================\n\n", .{});
