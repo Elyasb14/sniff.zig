@@ -28,7 +28,7 @@ pub const Ipv4Header = struct {
     // Options may follow if IHL > 5
 };
 
-pub const TcpHeader = packed struct {
+pub const TcpHeader = struct {
     src_port: u16,
     dst_port: u16,
     seq_number: u32,
@@ -37,7 +37,16 @@ pub const TcpHeader = packed struct {
     window_size: u16,
     checksum: u16,
     urgent_pointer: u16,
+    options: ?[]const u8,
     // Options may follow if data_offset > 5
+    pub fn data_offset(self: TcpHeader) u16 {
+        // In 32-bit words, so multiply by 4 to get bytes
+        return self.data_offset_reserved_flags >> 12 & 0xF;
+    }
+
+    pub fn header_length(self: TcpHeader) u16 {
+        return self.data_offset() * 4;
+    }
 
     /// we parse ints in big endian
     /// the masks for these flags are not in the usual order as a result
@@ -57,7 +66,7 @@ pub const TcpHeader = packed struct {
     }
 };
 
-const TcpFlags = struct {
+const TcpFlags = packed struct {
     CWR: bool,
     ECE: bool,
     URG: bool,
@@ -200,7 +209,7 @@ pub const Packet = struct {
         const checksum = std.mem.readInt(u16, buf[16..18], self.endianess);
         const urgent_pointer = std.mem.readInt(u16, buf[18..20], self.endianess);
 
-        const tcp_hdr = TcpHeader{
+        var tcp_hdr = TcpHeader{
             .src_port = src_port,
             .dst_port = dst_port,
             .seq_number = seq_number,
@@ -209,8 +218,16 @@ pub const Packet = struct {
             .window_size = window_size,
             .checksum = checksum,
             .urgent_pointer = urgent_pointer,
+            .options = undefined,
         };
 
+        const hdr_len = tcp_hdr.header_length();
+        std.debug.print("HEADER LEN: {d}\n", .{hdr_len});
+        if (hdr_len > 20) {
+            tcp_hdr.options = buf[20..hdr_len];
+        } else {
+            tcp_hdr.options = null;
+        }
         self.tcp = tcp_hdr;
     }
 
@@ -296,6 +313,7 @@ pub const Packet = struct {
                     try stdout.print("  window size: {d}\n", .{tcp.window_size});
                     try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
                     try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});
+                    if (tcp.options) |opt| try stdout.print("  options: {any}\n", .{opt});
                 },
                 17 => if (packet.udp) |udp| {
                     try stdout.print("UDP:\n", .{});
