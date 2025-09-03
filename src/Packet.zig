@@ -25,7 +25,7 @@ pub const Ipv4Header = struct {
     header_checksum: u16,
     src_addr: []const u8 = undefined,
     dst_addr: []const u8 = undefined,
-    // Options may follow if IHL > 5
+    // Options may follow if IHL > 5 (rare in modern traffic, usually safe to ignore)
 };
 
 pub const TcpHeader = struct {
