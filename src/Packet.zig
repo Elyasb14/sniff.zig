@@ -228,7 +228,6 @@ pub const Packet = struct {
         };
 
         const hdr_len = tcp_hdr.header_length();
-        std.debug.print("HEADER LEN: {d}\n", .{hdr_len});
         if (hdr_len > 20) {
             tcp_hdr.options = buf[20..hdr_len];
         } else {
