@@ -85,6 +85,7 @@ pub const Packet = struct {
     datalink: c_int,
     ts: c.struct_timeval,
     caplen: c_uint,
+    endianess: std.builtin.Endian,
 
     ethernet: ?EthernetHeader,
     ipv4: ?Ipv4Header, // null if not IPv4
@@ -92,8 +93,8 @@ pub const Packet = struct {
     udp: ?UdpHeader, // null unless protocol == 17
     icmp: ?IcmpHeader, // null unless protocol == 1
 
-    pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr) ?Packet {
-        var pkt = Packet{ .datalink = dlt, .ts = header.ts, .caplen = header.caplen, .ethernet = null, .ipv4 = null, .tcp = null, .udp = null, .icmp = null };
+    pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr, endianess: std.builtin.Endian) ?Packet {
+        var pkt = Packet{ .datalink = dlt, .ts = header.ts, .caplen = header.caplen, .endianess = endianess, .ethernet = null, .ipv4 = null, .tcp = null, .udp = null, .icmp = null };
 
         switch (dlt) {
             // Ethernet (DLT_EN10MB)
@@ -170,7 +171,7 @@ pub const Packet = struct {
             .dscp_ecn = descp_ecn,
             .total_length = total_length,
             .flags_fragment = flags_fragment,
-            .identification = std.mem.readInt(u16, id, .big),
+            .identification = std.mem.readInt(u16, id, self.endianess),
             .ttl = ttl,
             .protocol = protocol,
             .header_checksum = std.mem.readInt(u16, cksm, .big),
@@ -190,14 +191,14 @@ pub const Packet = struct {
     }
 
     fn parse_tcp(self: *Packet, buf: [*c]const u8) void {
-        const src_port = std.mem.readInt(u16, buf[0..2], .big);
-        const dst_port = std.mem.readInt(u16, buf[2..4], .big);
-        const seq_number = std.mem.readInt(u32, buf[4..8], .big);
-        const ack_number = std.mem.readInt(u32, buf[8..12], .big);
-        const data_offset_reserved_flags = std.mem.readInt(u16, buf[12..14], .big);
-        const window_size = std.mem.readInt(u16, buf[14..16], .big);
-        const checksum = std.mem.readInt(u16, buf[16..18], .big);
-        const urgent_pointer = std.mem.readInt(u16, buf[18..20], .big);
+        const src_port = std.mem.readInt(u16, buf[0..2], self.endianess);
+        const dst_port = std.mem.readInt(u16, buf[2..4], self.endianess);
+        const seq_number = std.mem.readInt(u32, buf[4..8], self.endianess);
+        const ack_number = std.mem.readInt(u32, buf[8..12], self.endianess);
+        const data_offset_reserved_flags = std.mem.readInt(u16, buf[12..14], self.endianess);
+        const window_size = std.mem.readInt(u16, buf[14..16], self.endianess);
+        const checksum = std.mem.readInt(u16, buf[16..18], self.endianess);
+        const urgent_pointer = std.mem.readInt(u16, buf[18..20], self.endianess);
 
         const tcp_hdr = TcpHeader{
             .src_port = src_port,
@@ -214,10 +215,10 @@ pub const Packet = struct {
     }
 
     fn parse_udp(self: *Packet, buf: [*c]const u8) void {
-        const src_port = std.mem.readInt(u16, buf[0..2], .big);
-        const dst_port = std.mem.readInt(u16, buf[2..4], .big);
-        const len = std.mem.readInt(u16, buf[4..6], .big);
-        const cksum = std.mem.readInt(u16, buf[6..8], .big);
+        const src_port = std.mem.readInt(u16, buf[0..2], self.endianess);
+        const dst_port = std.mem.readInt(u16, buf[2..4], self.endianess);
+        const len = std.mem.readInt(u16, buf[4..6], self.endianess);
+        const cksum = std.mem.readInt(u16, buf[6..8], self.endianess);
 
         const udp_hdr = UdpHeader{
             .src_port = src_port,
@@ -232,7 +233,7 @@ pub const Packet = struct {
     fn parse_icmp(self: *Packet, buf: [*c]const u8) void {
         const icmp_type = buf[0];
         const code = buf[1];
-        const cksum = std.mem.readInt(u16, buf[2..4], .big);
+        const cksum = std.mem.readInt(u16, buf[2..4], self.endianess);
 
         const icmp_hdr = IcmpHeader{
             .type = icmp_type,

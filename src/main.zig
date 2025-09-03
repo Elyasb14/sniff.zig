@@ -66,7 +66,7 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
 
-                        if (packet.Packet.init(dlt, buf, @ptrCast(hdr))) |pkt| {
+                        if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
                             try pkt.pp();
                         } else {
                             continue;
