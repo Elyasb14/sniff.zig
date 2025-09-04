@@ -335,7 +335,7 @@ pub const Packet = struct {
                         try stdout.print("  checksum: 0x{x}\n", .{tcp.checksum});
                         try stdout.print("  urgent pointer: {d}\n", .{tcp.urgent_pointer});
                         if (tcp.options) |opt| try stdout.print("  options: {any}\n", .{opt});
-                        try stdout.print("  payload: {s}\n", .{tcp.payload});
+                        try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{tcp.payload});
                     },
                     .udp => |udp| {
                         try stdout.print("UDP:\n", .{});
@@ -343,12 +343,12 @@ pub const Packet = struct {
                         try stdout.print("  dst port: {d}\n", .{udp.dst_port});
                         try stdout.print("  length: {d}\n", .{udp.length});
                         try stdout.print("  checksum: 0x{x}\n", .{udp.checksum});
-                        try stdout.print("  payload: {s}\n", .{udp.payload});
+                        try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{udp.payload});
                     },
                     .icmp => |icmp| {
                         try stdout.print("ICMP\n", .{});
                         try stdout.print("  icmp type: {d}\n", .{icmp.type});
-                        try stdout.print("  payload: {s}\n", .{icmp.payload});
+                        try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{icmp.payload});
                     },
                     else => try stdout.print("Transport: protocol {d} not parsed\n", .{ip.protocol}),
                 };
