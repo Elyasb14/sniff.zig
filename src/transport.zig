@@ -3,7 +3,7 @@ const c = @cImport({
     @cInclude("pcap.h");
 });
 
-const Transport = union(enum) {
+pub const Transport = union(enum) {
     tcp: TcpHeader,
     udp: UdpHeader,
     icmp: IcmpHeader,

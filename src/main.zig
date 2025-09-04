@@ -1,6 +1,7 @@
 const std = @import("std");
 const Args = @import("Args.zig");
 const transport = @import("transport.zig");
+const http = @import("application/http.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -67,7 +68,16 @@ pub fn main() !void {
                         // We got a valid packet
 
                         if (transport.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            try pkt.pp();
+                            // try pkt.pp();
+                            if (pkt.transport) |x| {
+                                // NOTE: this is a bad way to enter this stage of application level processing
+                                // we really need to figure out what we want the entry point to application level processing is
+                                // also we just assume transport is tcp
+                                if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081) {
+                                    const http_pkt = http.HttpPacket.init(pkt);
+                                    std.debug.print("http_pkt: {any}\n", .{http_pkt});
+                                }
+                            }
                         } else {
                             continue;
                         }

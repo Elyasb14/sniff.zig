@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "sniff_zig",
+        .name = "sniff",
         .root_module = exe_mod,
     });
     exe.linkSystemLibrary("pcap");
