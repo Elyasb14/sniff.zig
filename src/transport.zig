@@ -15,13 +15,13 @@ const IpVersion = enum(u8) {
     IPV6 = 6,
 };
 
-pub const EthernetHeader = struct {
+const EthernetHeader = struct {
     dst_mac: []const u8 = undefined,
     src_mac: []const u8 = undefined,
     ether_type: u16, // 0x0800 = IPv4
 };
 
-pub const Ipv4Header = struct {
+const Ipv4Header = struct {
     version_ihl: u8, // version (4 bits) + IHL (4 bits)
     dscp_ecn: u8, // DSCP (6 bits) + ECN (2 bits)
     total_length: u16, // bytes (header + payload)
@@ -36,7 +36,7 @@ pub const Ipv4Header = struct {
     // Options may follow if IHL > 5 (rare in modern traffic, usually safe to ignore)
 };
 
-pub const TcpHeader = struct {
+const TcpHeader = struct {
     src_port: u16,
     dst_port: u16,
     seq_number: u32,
