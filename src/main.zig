@@ -73,9 +73,17 @@ pub fn main() !void {
                                 // NOTE: this is a bad way to enter this stage of application level processing
                                 // we really need to figure out what we want the entry point to application level processing is
                                 // also we just assume transport is tcp
-                                if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081) {
-                                    const http_pkt = http.HttpPacket.init(pkt);
-                                    std.debug.print("http_pkt: {any}\n", .{http_pkt});
+                                switch (x) {
+                                    .tcp => {
+                                        if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081) {
+                                            const http_pkt = http.HttpPacket.init(pkt);
+                                            std.debug.print("http_pkt: {any}\n", .{http_pkt});
+                                        }
+                                    },
+                                    else => {
+                                        // We need to handle this better
+                                        continue;
+                                    },
                                 }
                             }
                         } else {
