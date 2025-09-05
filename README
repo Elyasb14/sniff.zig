@@ -1,1 +1,5 @@
-Packet sniffer
+Sniff.zig
+
+this is a packet sniffer, loosely based on wireshark. i think i have some ideas on how to make this more useable than wireshark. this will always be a tui application, not a true gui for easy portabillity. 
+
+we only support ipv4, with transport layer protocols tcp, udp, and icmp. 
