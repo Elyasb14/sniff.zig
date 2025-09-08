@@ -75,9 +75,9 @@ pub fn main() !void {
                                 // also we just assume transport is tcp
                                 switch (x) {
                                     .tcp => {
-                                        if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081) {
-                                            const http_pkt = http.HttpPacket.init(pkt);
-                                            std.debug.print("http_pkt: {any}\n", .{http_pkt});
+                                        if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081 or x.tcp.dst_port == 80) {
+                                            const http_port = http.HttpPacket.init(pkt);
+                                            _ = http_port;
                                         }
                                     },
                                     else => {
