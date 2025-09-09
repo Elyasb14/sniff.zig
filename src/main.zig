@@ -13,14 +13,17 @@ const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
 
 fn dissect_transport_packet(pkt: packet.Packet) void {
-    std.debug.assert(pkt.transport != null); //
-    switch (pkt.transport.?) {
+    std.debug.assert(pkt.transport != null); // need a Transport to unrwap
+    const transport = pkt.transport.?;
+    switch (transport) {
         .tcp => {
-            const dst_port = pkt.transport.?.tcp.dst_port;
-            if (dst_port == 80) {
+            const dst_port = transport.tcp.dst_port;
+            const src_port = transport.tcp.src_port;
+
+            if (dst_port == 80 or src_port == 80) {
                 const http_pkt = http.HttpPacket.init(pkt);
-                if (http_pkt) |http_unrp| {
-                    std.debug.print("PACKET: {s}\n", .{http_unrp.msg.response.body});
+                if (http_pkt) |x| {
+                    std.debug.print("PACKET: {s}\n", .{x.msg.response.body});
                 }
             }
         },
@@ -87,8 +90,10 @@ pub fn main() !void {
                         // We got a valid packet
 
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            // wireshark has the notion of "dissector tree"
-                            dissect_transport_packet(pkt);
+                            if (pkt.transport) |_| {
+                                // wireshark has the notion of "dissector tree"
+                                dissect_transport_packet(pkt);
+                            } else try pkt.pp();
                         } else {
                             continue;
                         }
@@ -116,6 +121,6 @@ pub fn main() !void {
         dev = d.next;
     }
 
-    std.log.err("Can't open requested device: {s}", .{args.device});
+    std.log.err("Can't open requested device: \x1b[31m{s}\x1b[0m", .{args.device});
     c.pcap_freealldevs(alldevs);
 }

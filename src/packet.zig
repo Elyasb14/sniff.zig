@@ -16,24 +16,65 @@ const IpVersion = enum(u8) {
 };
 
 const EthernetHeader = struct {
-    dst_mac: []const u8 = undefined,
-    src_mac: []const u8 = undefined,
-    ether_type: u16, // 0x0800 = IPv4
+    dst_mac: []const u8,
+    src_mac: []const u8,
+    ether_type: u16,
+
+    pub fn init(buf: [*c]const u8) EthernetHeader {
+        const ether_type: u16 = (@as(u16, buf[12]) << 8) | buf[13];
+        const dst_mac = buf[0..6];
+        const src_mac = buf[6..12];
+        return EthernetHeader{
+            .ether_type = ether_type,
+            .src_mac = src_mac,
+            .dst_mac = dst_mac,
+        };
+    }
 };
 
 const Ipv4Header = struct {
-    version_ihl: u8, // version (4 bits) + IHL (4 bits)
-    dscp_ecn: u8, // DSCP (6 bits) + ECN (2 bits)
-    total_length: u16, // bytes (header + payload)
+    version_ihl: u8,
+    dscp_ecn: u8,
+    total_length: u16,
     identification: u16,
-    flags_fragment: u16, // flags (3 bits) + fragment offset (13 bits)
+    flags_fragment: u16,
     ttl: u8,
-    protocol: u8, // TCP=6, UDP=17, ICMP=1, etc.
+    protocol: u8,
     header_checksum: u16,
-    src_addr: []const u8 = undefined,
-    dst_addr: []const u8 = undefined,
+    src_addr: []const u8,
+    dst_addr: []const u8,
     options: ?[]const u8,
-    // Options may follow if IHL > 5 (rare in modern traffic, usually safe to ignore)
+
+    pub fn init(buf: [*c]const u8, endian: std.builtin.Endian) Ipv4Header {
+        const version_ihl = buf[0];
+        const ihl = version_ihl & 0x0F;
+        const hdr_len = ihl * 4;
+
+        const descp_ecn = buf[1];
+        const total_length = (@as(u16, buf[2]) << 8) | buf[3];
+        const identification = std.mem.readInt(u16, buf[4..6], endian);
+        const flags_fragment = (@as(u16, buf[6]) << 8) | buf[7];
+        const ttl = buf[8];
+        const protocol = buf[9];
+        const header_checksum = std.mem.readInt(u16, buf[10..12], .big);
+        const src_addr = buf[12..16];
+        const dst_addr = buf[16..20];
+        const options: ?[]const u8 = if (hdr_len > 20) buf[20..hdr_len] else null;
+
+        return Ipv4Header{
+            .version_ihl = version_ihl,
+            .dscp_ecn = descp_ecn,
+            .total_length = total_length,
+            .identification = identification,
+            .flags_fragment = flags_fragment,
+            .ttl = ttl,
+            .protocol = protocol,
+            .header_checksum = header_checksum,
+            .src_addr = src_addr,
+            .dst_addr = dst_addr,
+            .options = options,
+        };
+    }
 };
 
 const TcpHeader = struct {
@@ -41,36 +82,62 @@ const TcpHeader = struct {
     dst_port: u16,
     seq_number: u32,
     ack_number: u32,
-    data_offset_reserved_flags: u16, // offset (4 bits), reserved (3), flags (9)
+    data_offset_reserved_flags: u16,
     window_size: u16,
     checksum: u16,
     urgent_pointer: u16,
-    options: ?[]const u8, // null if header_length <= 20
-    payload: []const u8 = undefined,
+    options: ?[]const u8,
+    payload: []const u8,
 
-    pub fn data_offset(self: TcpHeader) u16 {
-        // In 32-bit words, so multiply by 4 to get bytes
-        return self.data_offset_reserved_flags >> 12 & 0xF;
+    pub fn init(buf: [*c]const u8, endian: std.builtin.Endian) TcpHeader {
+        const src_port = std.mem.readInt(u16, buf[0..2], endian);
+        const dst_port = std.mem.readInt(u16, buf[2..4], endian);
+        const seq_number = std.mem.readInt(u32, buf[4..8], endian);
+        const ack_number = std.mem.readInt(u32, buf[8..12], endian);
+        const data_offset_reserved_flags = std.mem.readInt(u16, buf[12..14], endian);
+        const window_size = std.mem.readInt(u16, buf[14..16], endian);
+        const checksum = std.mem.readInt(u16, buf[16..18], endian);
+        const urgent_pointer = std.mem.readInt(u16, buf[18..20], endian);
+
+        var hdr = TcpHeader{
+            .src_port = src_port,
+            .dst_port = dst_port,
+            .seq_number = seq_number,
+            .ack_number = ack_number,
+            .data_offset_reserved_flags = data_offset_reserved_flags,
+            .window_size = window_size,
+            .checksum = checksum,
+            .urgent_pointer = urgent_pointer,
+            .options = null,
+            .payload = &[_]u8{},
+        };
+
+        const hdr_len = hdr.header_length();
+        if (hdr_len > 20) {
+            hdr.options = buf[20..hdr_len];
+        }
+        hdr.payload = std.mem.span(buf[hdr_len..]);
+        return hdr;
     }
 
-    pub fn header_length(self: TcpHeader) u16 {
+    fn data_offset(self: TcpHeader) u16 {
+        return self.data_offset_reserved_flags >> 12 & 0xF;
+    }
+    fn header_length(self: TcpHeader) u16 {
         return self.data_offset() * 4;
     }
 
-    /// we parse ints in big endian
-    /// the masks for these flags are not in the usual order as a result
-    /// https://datatracker.ietf.org/doc/html/rfc9293#section-3.1
-    pub fn parse_flags(self: TcpHeader) TcpFlags {
+    fn parse_flags(self: TcpHeader) TcpFlags {
         const flags = self.data_offset_reserved_flags & 0x1FF;
         return TcpFlags{
-            .FIN = (flags & 0x001) != 0, // bit 0
-            .SYN = (flags & 0x002) != 0, // bit 1
-            .RST = (flags & 0x004) != 0, // bit 2
-            .PSH = (flags & 0x008) != 0, // bit 3
-            .ACK = (flags & 0x010) != 0, // bit 4
-            .URG = (flags & 0x020) != 0, // bit 5
-            .ECE = (flags & 0x040) != 0, // bit 6
-            .CWR = (flags & 0x080) != 0, // bit 7
+            .FIN = (flags & 0x001) != 0,
+            .SYN = (flags & 0x002) != 0,
+            .RST = (flags & 0x004) != 0,
+            .PSH = (flags & 0x008) != 0,
+            .ACK = (flags & 0x010) != 0,
+            .URG = (flags & 0x020) != 0,
+            .ECE = (flags & 0x040) != 0,
+            .CWR = (flags & 0x080) != 0,
         };
     }
 };
@@ -89,9 +156,24 @@ const TcpFlags = struct {
 const UdpHeader = struct {
     src_port: u16,
     dst_port: u16,
-    length: u16, // header + data
+    length: u16,
     checksum: u16,
-    payload: []const u8 = undefined,
+    payload: []const u8,
+
+    pub fn init(buf: [*c]const u8, endian: std.builtin.Endian) UdpHeader {
+        const src_port = std.mem.readInt(u16, buf[0..2], endian);
+        const dst_port = std.mem.readInt(u16, buf[2..4], endian);
+        const length = std.mem.readInt(u16, buf[4..6], endian);
+        const checksum = std.mem.readInt(u16, buf[6..8], endian);
+        const payload = buf[8..length];
+        return UdpHeader{
+            .src_port = src_port,
+            .dst_port = dst_port,
+            .length = length,
+            .checksum = checksum,
+            .payload = payload,
+        };
+    }
 };
 
 const IcmpHeader = struct {
@@ -99,6 +181,19 @@ const IcmpHeader = struct {
     code: u8,
     checksum: u16,
     payload: []const u8,
+
+    pub fn init(buf: [*c]const u8, endian: std.builtin.Endian) IcmpHeader {
+        const icmp_type = buf[0];
+        const code = buf[1];
+        const checksum = std.mem.readInt(u16, buf[2..4], endian);
+        const payload = buf[4..];
+        return IcmpHeader{
+            .type = icmp_type,
+            .code = code,
+            .checksum = checksum,
+            .payload = std.mem.span(payload),
+        };
+    }
 };
 
 pub const Packet = struct {
@@ -108,57 +203,48 @@ pub const Packet = struct {
     endianess: std.builtin.Endian,
 
     ethernet: ?EthernetHeader,
-    ipv4: ?Ipv4Header, // null if not IPv4
+    ipv4: ?Ipv4Header,
     transport: ?Transport,
+
     pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr, endianess: std.builtin.Endian) ?Packet {
-        var pkt = Packet{ .datalink = dlt, .ts = header.ts, .caplen = header.caplen, .endianess = endianess, .ethernet = null, .ipv4 = null, .transport = null };
+        var pkt = Packet{
+            .datalink = dlt,
+            .ts = header.ts,
+            .caplen = header.caplen,
+            .endianess = endianess,
+            .ethernet = null,
+            .ipv4 = null,
+            .transport = null,
+        };
 
         switch (dlt) {
-            // Ethernet (DLT_EN10MB)
             c.DLT_EN10MB => {
-                const ether_type: u16 = (@as(u16, buf[12]) << 8) | buf[13];
-                const src_mac = buf[0..6];
-                const dst_mac = buf[6..12];
-
-                const eth_hdr = EthernetHeader{ .ether_type = ether_type, .src_mac = src_mac, .dst_mac = dst_mac };
-                pkt.ethernet = eth_hdr;
-                switch (ether_type) {
-                    0x0800 => pkt.parse_ipv4(buf[14..]), // IPv4 starts at offset 14
+                const eth = EthernetHeader.init(buf[0..14]);
+                pkt.ethernet = eth;
+                switch (eth.ether_type) {
+                    0x0800 => pkt.parse_ipv4(buf[14..]),
                     0x86dd => {
-                        std.log.err("\x1b[31mWe don't support IPV6\x1b[0m", .{});
+                        std.log.err("\x1b[31mIPv6 not supported\x1b[0m", .{});
                         return null;
                     },
-                    else => {
-                        std.log.err("\x1b[31mWe dont support ether type\x1b[0m: {x}", .{ether_type});
-                        return null;
-                    },
+                    else => return null,
                 }
             },
-            // Raw IP (DLT_RAW)
             c.DLT_RAW => {
                 const version = buf[0] >> 4;
                 switch (version) {
-                    4 => {
-                        pkt.parse_ipv4(buf[0..]);
-                    },
-
+                    4 => pkt.parse_ipv4(buf[0..]),
                     6 => {
-                        std.log.err("\x1b[31mWe don't support IPV6\x1b[0m", .{});
+                        std.log.err("IPv6 not supported", .{});
                         return null;
                     },
-                    else => {
-                        std.log.err("\x1b[31mWe dont support ip version\x1b[0m: {d}", .{version});
-                        return null;
-                    },
+                    else => return null,
                 }
             },
             c.DLT_NULL => {
-                // 4-byte pseudo-header
                 const family = std.mem.readInt(u32, buf[0..4], .little);
                 switch (family) {
-                    2 => {
-                        pkt.parse_ipv4((buf[4..]));
-                    }, // AF_INET
+                    2 => pkt.parse_ipv4(buf[4..]),
                     24 => {
                         std.log.err("IPv6 not supported", .{});
                         return null;
@@ -172,113 +258,19 @@ pub const Packet = struct {
     }
 
     fn parse_ipv4(self: *Packet, buf: [*c]const u8) void {
-        const version_ihl = buf[0];
-        const ihl = version_ihl & 0x0F; // low 4 bits
-        const hdr_len = ihl * 4;
+        const ip = Ipv4Header.init(buf, self.endianess);
+        self.ipv4 = ip;
 
-        const descp_ecn = buf[1];
-        const total_length = (@as(u16, buf[2]) << 8) | buf[3];
-        const id = buf[4..6];
-        const flags_fragment = (@as(u16, buf[6]) << 8) | buf[7];
-        const ttl = buf[8];
-        const protocol = buf[9];
-        const cksm = buf[10..12];
-        const src_addr = buf[12..16];
-        const dst_addr = buf[16..20];
-        const options: ?[]const u8 = if (hdr_len > 20) buf[20..hdr_len] else null;
+        const ihl = (ip.version_ihl & 0x0F) * 4;
+        const payload = buf[ihl..];
 
-        const ipv4_hdr = Ipv4Header{
-            .version_ihl = version_ihl,
-            .dscp_ecn = descp_ecn,
-            .total_length = total_length,
-            .flags_fragment = flags_fragment,
-            .identification = std.mem.readInt(u16, id, self.endianess),
-            .ttl = ttl,
-            .protocol = protocol,
-            .header_checksum = std.mem.readInt(u16, cksm, .big),
-            .src_addr = src_addr,
-            .dst_addr = dst_addr,
-            .options = options,
-        };
-        self.ipv4 = ipv4_hdr;
-        // Skip past IPv4 header (ihl * 4, not always 20)
-        const payload = buf[hdr_len..];
-
-        switch (protocol) {
-            6 => self.parse_tcp(payload),
-            17 => self.parse_udp(payload),
-            1 => self.parse_icmp(payload),
-            else => return,
+        switch (ip.protocol) {
+            6 => self.transport = Transport{ .tcp = TcpHeader.init(payload, self.endianess) },
+            17 => self.transport = Transport{ .udp = UdpHeader.init(payload, self.endianess) },
+            1 => self.transport = Transport{ .icmp = IcmpHeader.init(payload, self.endianess) },
+            else => {},
         }
     }
-
-    fn parse_tcp(self: *Packet, buf: [*c]const u8) void {
-        const src_port = std.mem.readInt(u16, buf[0..2], self.endianess);
-        const dst_port = std.mem.readInt(u16, buf[2..4], self.endianess);
-        const seq_number = std.mem.readInt(u32, buf[4..8], self.endianess);
-        const ack_number = std.mem.readInt(u32, buf[8..12], self.endianess);
-        const data_offset_reserved_flags = std.mem.readInt(u16, buf[12..14], self.endianess);
-        const window_size = std.mem.readInt(u16, buf[14..16], self.endianess);
-        const checksum = std.mem.readInt(u16, buf[16..18], self.endianess);
-        const urgent_pointer = std.mem.readInt(u16, buf[18..20], self.endianess);
-
-        var tcp_hdr = TcpHeader{
-            .src_port = src_port,
-            .dst_port = dst_port,
-            .seq_number = seq_number,
-            .ack_number = ack_number,
-            .data_offset_reserved_flags = data_offset_reserved_flags,
-            .window_size = window_size,
-            .checksum = checksum,
-            .urgent_pointer = urgent_pointer,
-            .options = undefined,
-        };
-
-        const hdr_len = tcp_hdr.header_length();
-        if (hdr_len > 20) {
-            tcp_hdr.options = buf[20..hdr_len];
-        } else {
-            tcp_hdr.options = null;
-        }
-
-        tcp_hdr.payload = std.mem.span(buf[hdr_len..]);
-        self.transport = Transport{ .tcp = tcp_hdr };
-    }
-
-    fn parse_udp(self: *Packet, buf: [*c]const u8) void {
-        const src_port = std.mem.readInt(u16, buf[0..2], self.endianess);
-        const dst_port = std.mem.readInt(u16, buf[2..4], self.endianess);
-        const len = std.mem.readInt(u16, buf[4..6], self.endianess);
-        const cksum = std.mem.readInt(u16, buf[6..8], self.endianess);
-        const payload = buf[8..len];
-
-        const udp_hdr = UdpHeader{
-            .src_port = src_port,
-            .dst_port = dst_port,
-            .length = len,
-            .checksum = cksum,
-            .payload = payload,
-        };
-
-        self.transport = Transport{ .udp = udp_hdr };
-    }
-
-    fn parse_icmp(self: *Packet, buf: [*c]const u8) void {
-        const icmp_type = buf[0];
-        const code = buf[1];
-        const cksum = std.mem.readInt(u16, buf[2..4], self.endianess);
-        const payload = std.mem.span(buf[4..]);
-
-        const icmp_hdr = IcmpHeader{
-            .type = icmp_type,
-            .code = code,
-            .checksum = cksum,
-            .payload = payload,
-        };
-
-        self.transport = Transport{ .icmp = icmp_hdr };
-    }
-
     pub fn pp(packet: Packet) !void {
         var stdout_buffer: [2048]u8 = undefined;
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
@@ -356,3 +348,4 @@ pub const Packet = struct {
         try stdout.flush();
     }
 };
+
