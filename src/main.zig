@@ -22,13 +22,13 @@ pub fn main() !void {
     var errbuf: [c.PCAP_ERRBUF_SIZE]u8 = undefined;
 
     if (c.pcap_init(c.PCAP_CHAR_ENC_UTF_8, &errbuf) != 0) {
-        std.debug.print("Failed to initialize pcap\n", .{});
+        std.log.err("Failed to initialize pcap\n", .{});
         return;
     }
 
     var alldevs: ?*c.pcap_if_t = null;
     if (c.pcap_findalldevs(&alldevs, &errbuf) != 0) {
-        std.debug.print("pcap_findalldevs failed: {s}\n", .{errbuf});
+        std.log.err("pcap_findalldevs failed: {s}\n", .{errbuf});
         return;
     }
 
@@ -76,8 +76,10 @@ pub fn main() !void {
                                 switch (x) {
                                     .tcp => {
                                         if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081 or x.tcp.dst_port == 80) {
-                                            const http_port = http.HttpPacket.init(pkt);
-                                            _ = http_port;
+                                            const http_pkt = http.HttpPacket.init(pkt);
+                                            if (http_pkt) |http_unrp| {
+                                                std.debug.print("PACKET: {s}\n", .{http_unrp.msg.response.body});
+                                            }
                                         }
                                     },
                                     else => {
