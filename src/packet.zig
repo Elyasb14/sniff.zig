@@ -204,13 +204,11 @@ pub const Packet = struct {
         // Skip past IPv4 header (ihl * 4, not always 20)
         const payload = buf[hdr_len..];
 
-        if (self.ipv4 != null) {
-            switch (protocol) {
-                6 => self.parse_tcp(payload),
-                17 => self.parse_udp(payload),
-                1 => self.parse_icmp(payload),
-                else => return,
-            }
+        switch (protocol) {
+            6 => self.parse_tcp(payload),
+            17 => self.parse_udp(payload),
+            1 => self.parse_icmp(payload),
+            else => return,
         }
     }
 

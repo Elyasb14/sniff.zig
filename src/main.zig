@@ -1,6 +1,6 @@
 const std = @import("std");
 const Args = @import("Args.zig");
-const transport = @import("transport.zig");
+const packet = @import("packet.zig");
 const http = @import("application/http.zig");
 
 const c = @cImport({
@@ -11,6 +11,25 @@ const PCAP_OK = 1;
 const PCAP_TIMEOUT = 0;
 const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
+
+fn dissect_transport_packet(pkt: packet.Packet) void {
+    std.debug.assert(pkt.transport != null); //
+    switch (pkt.transport.?) {
+        .tcp => {
+            const dst_port = pkt.transport.?.tcp.dst_port;
+            if (dst_port == 80) {
+                const http_pkt = http.HttpPacket.init(pkt);
+                if (http_pkt) |http_unrp| {
+                    std.debug.print("PACKET: {s}\n", .{http_unrp.msg.response.body});
+                }
+            }
+        },
+        else => {
+            // We need to handle this better
+            return;
+        },
+    }
+}
 
 pub fn main() !void {
     // setup
@@ -67,27 +86,9 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
 
-                        if (transport.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            // try pkt.pp();
-                            if (pkt.transport) |x| {
-                                // NOTE: this is a bad way to enter this stage of application level processing
-                                // we really need to figure out what we want the entry point to application level processing is
-                                // also we just assume transport is tcp
-                                switch (x) {
-                                    .tcp => {
-                                        if (x.tcp.dst_port == 8081 or x.tcp.src_port == 8081 or x.tcp.dst_port == 80) {
-                                            const http_pkt = http.HttpPacket.init(pkt);
-                                            if (http_pkt) |http_unrp| {
-                                                std.debug.print("PACKET: {s}\n", .{http_unrp.msg.response.body});
-                                            }
-                                        }
-                                    },
-                                    else => {
-                                        // We need to handle this better
-                                        continue;
-                                    },
-                                }
-                            }
+                        if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
+                            // wireshark has the notion of "dissector tree"
+                            dissect_transport_packet(pkt);
                         } else {
                             continue;
                         }

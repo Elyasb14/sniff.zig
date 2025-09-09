@@ -1,5 +1,5 @@
 const std = @import("std");
-const transport = @import("../transport.zig");
+const packet = @import("../packet.zig");
 
 const HttpHeader = struct {
     name: []const u8,
@@ -39,10 +39,10 @@ fn get_headers(buf: []const u8) []const HttpHeader {
 }
 
 pub const HttpPacket = struct {
-    packet: transport.Packet,
+    packet: packet.Packet,
     msg: HttpMsg,
 
-    pub fn init(pkt: transport.Packet) ?HttpPacket {
+    pub fn init(pkt: packet.Packet) ?HttpPacket {
         std.debug.assert(pkt.transport.? == .tcp); // need to pass in tcp transport packet to parse http
         const payload = pkt.transport.?.tcp.payload;
 
