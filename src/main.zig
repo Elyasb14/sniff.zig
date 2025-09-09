@@ -116,5 +116,6 @@ pub fn main() !void {
         dev = d.next;
     }
 
+    std.log.err("Can't open requested device: {s}", .{args.device});
     c.pcap_freealldevs(alldevs);
 }
