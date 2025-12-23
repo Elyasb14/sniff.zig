@@ -12,6 +12,16 @@ const PCAP_TIMEOUT = 0;
 const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
 
+fn wg(pkt: packet.Packet) void {
+    const wg_type = pkt.transport.?.udp.payload[0..4];
+    const wg_type_int = std.mem.readInt(u32, wg_type, .little);
+    if (wg_type_int == 1) {
+        std.debug.print("WG: {d}\n", .{wg_type_int});
+    } else if (wg_type_int == 2) {
+        std.debug.print("WG: {d}\n", .{wg_type_int});
+    }
+}
+
 fn dissect_transport_packet(pkt: packet.Packet) void {
     std.debug.assert(pkt.transport != null); // need a Transport to unrwap
     const transport = pkt.transport.?;
@@ -27,10 +37,12 @@ fn dissect_transport_packet(pkt: packet.Packet) void {
                 }
             }
         },
-        else => {
-            // We need to handle this better
+        .udp => {
+            wg(pkt);
+
             return;
         },
+        else => return,
     }
 }
 
