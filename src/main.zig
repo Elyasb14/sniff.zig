@@ -12,6 +12,29 @@ const PCAP_TIMEOUT = 0;
 const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
 
+fn list_devices() !void {
+    var errbuf: [c.PCAP_ERRBUF_SIZE]u8 = undefined;
+    var alldevs: ?*c.pcap_if_t = null;
+
+    if (c.pcap_findalldevs(&alldevs, &errbuf) != 0) {
+        std.log.err("pcap_findalldevs failed: {s}\n", .{errbuf});
+        return;
+    }
+
+    std.debug.print("Available network devices:\n", .{});
+    var dev = alldevs;
+    var i: u32 = 1;
+    while (dev) |d| {
+        const name = std.mem.span(d.name);
+        const description = if (d.description) |desc| std.mem.span(desc) else "No description";
+        std.debug.print("  {d}. {s} - {s}\n", .{ i, name, description });
+        i += 1;
+        dev = d.next;
+    }
+
+    c.pcap_freealldevs(alldevs);
+}
+
 fn wg(pkt: packet.Packet) void {
     const wg_type = pkt.transport.?.udp.payload[0..4];
     const wg_type_int = std.mem.readInt(u32, wg_type, .little);
@@ -53,6 +76,21 @@ pub fn main() !void {
     const allocator = arena.allocator();
 
     const args = try Args.parse(allocator);
+
+    if (args.list_devices) {
+        try list_devices();
+        return;
+    }
+
+    if (args.device.len == 0) {
+        std.debug.print("Error: No device specified. Use -d <device> or --list to see available devices.\n\n", .{});
+        Args.help("sniff_zig");
+    }
+
+    if (args.verbose) {
+        std.log.info("Starting packet capture on device: {s}", .{args.device});
+    }
+
     var errbuf: [c.PCAP_ERRBUF_SIZE]u8 = undefined;
 
     if (c.pcap_init(c.PCAP_CHAR_ENC_UTF_8, &errbuf) != 0) {
@@ -69,6 +107,10 @@ pub fn main() !void {
     var dev = alldevs;
     while (dev) |d| {
         if (std.mem.eql(u8, std.mem.span(d.name), args.device)) {
+            if (args.verbose) {
+                std.log.info("Found device: {s}", .{args.device});
+            }
+
             const chan = c.pcap_create(@ptrCast(args.device), &errbuf);
             if (chan == null) {
                 std.debug.print("channel was null\n", .{});
