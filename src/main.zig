@@ -49,8 +49,8 @@ fn list_devices() !void {
                     const sa = @as(*const c.struct_sockaddr, @ptrCast(sa_ptr));
                     if (sa.sa_family == c.AF_INET) {
                         const sin = @as(*const c.struct_sockaddr_in, @ptrCast(@alignCast(sa_ptr)));
-                        const ip_addr = @as([4]u8, @bitCast(sin.sin_addr.s_addr));
-                        std.debug.print("       - IPv4: {d}.{d}.{d}.{d}\n", .{ ip_addr[3], ip_addr[2], ip_addr[1], ip_addr[0] });
+                        const ip_addr = @as(*const [4]u8, @ptrCast(&sin.sin_addr.s_addr));
+                        std.debug.print("       - IPv4: {d}.{d}.{d}.{d}\n", .{ ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3] });
                     } else if (sa.sa_family == c.AF_INET6) {
                         std.debug.print("       - IPv6: (see ifconfig for details)\n", .{});
                     }
