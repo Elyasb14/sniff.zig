@@ -2,6 +2,7 @@ const std = @import("std");
 const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
+const wireguard = @import("wireguard.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -21,14 +22,45 @@ fn list_devices() !void {
         return;
     }
 
-    std.debug.print("Available network devices:\n", .{});
+    std.debug.print("Available network devices (with IPv4 addresses):\n", .{});
     var dev = alldevs;
     var i: u32 = 1;
     while (dev) |d| {
-        const name = std.mem.span(d.name);
-        const description = if (d.description) |desc| std.mem.span(desc) else "No description";
-        std.debug.print("  {d}. {s} - {s}\n", .{ i, name, description });
-        i += 1;
+        var has_ipv4 = false;
+        var addr = d.addresses;
+        while (addr) |a| {
+            if (a.*.addr) |sa_ptr| {
+                const sa = @as(*const c.struct_sockaddr, @ptrCast(sa_ptr));
+                if (sa.sa_family == c.AF_INET) {
+                    has_ipv4 = true;
+                    break;
+                }
+            }
+            addr = a.*.next;
+        }
+
+        if (has_ipv4) {
+            const name = std.mem.span(d.name);
+            std.debug.print("  {d}. {s}\n", .{ i, name });
+
+            addr = d.addresses;
+            std.debug.print("     Addresses:\n", .{});
+            while (addr) |a| {
+                if (a.*.addr) |sa_ptr| {
+                    const sa = @as(*const c.struct_sockaddr, @ptrCast(sa_ptr));
+                    if (sa.sa_family == c.AF_INET) {
+                        const sin = @as(*const c.struct_sockaddr_in, @ptrCast(@alignCast(sa_ptr)));
+                        const ip_addr = @as([4]u8, @bitCast(sin.sin_addr.s_addr));
+                        std.debug.print("       - IPv4: {d}.{d}.{d}.{d}\n", .{ ip_addr[3], ip_addr[2], ip_addr[1], ip_addr[0] });
+                    } else if (sa.sa_family == c.AF_INET6) {
+                        std.debug.print("       - IPv6: (see ifconfig for details)\n", .{});
+                    }
+                }
+                addr = a.*.next;
+            }
+            std.debug.print("\n", .{});
+            i += 1;
+        }
         dev = d.next;
     }
 
@@ -36,12 +68,9 @@ fn list_devices() !void {
 }
 
 fn wg(pkt: packet.Packet) void {
-    const wg_type = pkt.transport.?.udp.payload[0..4];
-    const wg_type_int = std.mem.readInt(u32, wg_type, .little);
-    if (wg_type_int == 1) {
-        std.debug.print("WG: {d}\n", .{wg_type_int});
-    } else if (wg_type_int == 2) {
-        std.debug.print("WG: {d}\n", .{wg_type_int});
+    const payload = pkt.transport.?.udp.payload;
+    if (wireguard.WgPacket.init(payload)) |wg_pkt| {
+        wg_pkt.pp() catch return;
     }
 }
 
