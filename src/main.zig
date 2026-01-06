@@ -2,7 +2,6 @@ const std = @import("std");
 const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
-const wireguard = @import("wireguard.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -67,13 +66,6 @@ fn list_devices() !void {
     c.pcap_freealldevs(alldevs);
 }
 
-fn wg(pkt: packet.Packet) void {
-    const payload = pkt.transport.?.udp.payload;
-    if (wireguard.WgPacket.init(payload)) |wg_pkt| {
-        wg_pkt.pp() catch return;
-    }
-}
-
 fn dissect_transport_packet(pkt: packet.Packet) void {
     std.debug.assert(pkt.transport != null); // need a Transport to unrwap
     const transport = pkt.transport.?;
@@ -90,8 +82,6 @@ fn dissect_transport_packet(pkt: packet.Packet) void {
             }
         },
         .udp => {
-            wg(pkt);
-
             return;
         },
         else => return,
