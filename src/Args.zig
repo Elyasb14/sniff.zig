@@ -5,6 +5,7 @@ const Args = @This();
 device: []const u8,
 verbose: bool,
 list_devices: bool,
+wireguard_only: bool,
 it: std.process.ArgIterator,
 
 const Option = enum {
@@ -16,6 +17,8 @@ const Option = enum {
     @"-l",
     @"--verbose",
     @"-v",
+    @"--wireguard",
+    @"-w",
 };
 
 pub fn help(process_name: []const u8) noreturn {
@@ -26,13 +29,15 @@ pub fn help(process_name: []const u8) noreturn {
         \\  -d, --device <name>    Network device to sniff (required)
         \\  -l, --list             List available network devices
         \\  -v, --verbose          Enable verbose output
+        \\  -w, --wireguard        Show only WireGuard packets
         \\  -h, --help             Show this help message
         \\
         \\EXAMPLES:
         \\  {s} -d en0             # Sniff on device en0
+        \\  {s} -d en0 -w          # Show only WireGuard packets
         \\  {s} --list             # List available devices
         \\
-    , .{ process_name, process_name, process_name });
+    , .{ process_name, process_name, process_name, process_name });
     std.process.exit(0);
 }
 
@@ -47,6 +52,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var device: []const u8 = "";
     var verbose: bool = false;
     var list_devices: bool = false;
+    var wireguard_only: bool = false;
 
     while (args.next()) |arg| {
         const option = std.meta.stringToEnum(Option, arg) orelse {
@@ -68,6 +74,9 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
             .@"--verbose", .@"-v" => {
                 verbose = true;
             },
+            .@"--wireguard", .@"-w" => {
+                wireguard_only = true;
+            },
         }
     }
 
@@ -75,6 +84,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .device = device,
         .verbose = verbose,
         .list_devices = list_devices,
+        .wireguard_only = wireguard_only,
         .it = args,
     };
 }

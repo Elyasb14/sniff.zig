@@ -66,11 +66,12 @@ fn list_devices() !void {
     c.pcap_freealldevs(alldevs);
 }
 
-fn dissect_transport_packet(pkt: packet.Packet) void {
+fn dissect_transport_packet(pkt: packet.Packet, wireguard_only: bool) !void {
     std.debug.assert(pkt.transport != null); // need a Transport to unrwap
     const transport = pkt.transport.?;
     switch (transport) {
         .tcp => {
+            if (wireguard_only) return;
             const dst_port = transport.tcp.dst_port;
             const src_port = transport.tcp.src_port;
 
@@ -82,9 +83,26 @@ fn dissect_transport_packet(pkt: packet.Packet) void {
             }
         },
         .udp => {
-            return;
+            const dst_port = transport.udp.dst_port;
+            const src_port = transport.udp.src_port;
+
+            if (dst_port == 51820 or src_port == 51820) {
+                if (packet.WireGuardPacket.init(transport.udp.payload.ptr, transport.udp.payload.len)) |wg| {
+                    std.debug.print("\x1b[33mWireGuard:\x1b[0m\n", .{});
+                    std.debug.print("  type: {d} ({s})\n", .{ wg.msg_type, wg.msgTypeName() });
+                    std.debug.print("  sender index: 0x{x}\n", .{wg.sender_index});
+                    if (wg.receiver_index) |ri| std.debug.print("  receiver index: 0x{x}\n", .{ri});
+                    std.debug.print("  payload length: {d} bytes\n", .{wg.payload.len});
+                } else {
+                    std.debug.print("WireGuard: (invalid packet)\n", .{});
+                }
+            } else if (!wireguard_only) {
+                try pkt.pp();
+            }
         },
-        else => return,
+        else => {
+            if (wireguard_only) return;
+        },
     }
 }
 
@@ -165,8 +183,8 @@ pub fn main() !void {
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
                             if (pkt.transport) |_| {
                                 // wireshark has the notion of "dissector tree"
-                                dissect_transport_packet(pkt);
-                            } else try pkt.pp();
+                                try dissect_transport_packet(pkt, args.wireguard_only);
+                            } else if (!args.wireguard_only) try pkt.pp();
                         } else {
                             continue;
                         }
