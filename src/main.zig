@@ -2,6 +2,7 @@ const std = @import("std");
 const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
+const wireguard = @import("application/wireguard.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -87,7 +88,7 @@ fn dissect_transport_packet(pkt: packet.Packet, wireguard_only: bool) !void {
             const src_port = transport.udp.src_port;
 
             if (dst_port == 51820 or src_port == 51820) {
-                if (packet.WireGuardPacket.init(transport.udp.payload.ptr, transport.udp.payload.len)) |wg| {
+                if (wireguard.WireGuardPacket.init(transport.udp.payload.ptr, transport.udp.payload.len)) |wg| {
                     std.debug.print("\x1b[33mWireGuard:\x1b[0m\n", .{});
                     std.debug.print("  type: {d} ({s})\n", .{ wg.msg_type, wg.msgTypeName() });
                     std.debug.print("  sender index: 0x{x}\n", .{wg.sender_index});
