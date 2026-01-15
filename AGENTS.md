@@ -38,8 +38,9 @@ This is a Zig-based network packet sniffer called "sniff" that uses libpcap for 
 - ✅ ICMP
 - ✅ HTTP (basic)
 - ✅ WireGuard
+- ✅ CAN (basic SocketCAN support)
 - ❌ IPv6 (not supported)
-- 🔄 CAN (planned - see AGENTS.md for implementation plan)
+- 🔄 Victron CAN (planned - specific CAN message decoding)
 
 ## Important Instructions
 - NEVER commit changes unless explicitly asked by the user

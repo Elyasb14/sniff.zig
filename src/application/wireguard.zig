@@ -16,6 +16,7 @@ pub const WireGuardPacket = struct {
         var receiver: ?u32 = null;
         var payload_start: usize = 8;
 
+        // TODO: get these magic constants from somehwere
         switch (msg_type) {
             1 => {
                 if (length < 8 + 32 + 8 + 24 + 16 + 48) return null;
