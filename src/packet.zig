@@ -7,6 +7,7 @@ pub const Transport = union(enum) {
     tcp: TcpHeader,
     udp: UdpHeader,
     icmp: IcmpHeader,
+    can: CanFrame,
     unknown: []const u8,
 };
 
@@ -196,14 +197,33 @@ const IcmpHeader = struct {
     }
 };
 
+const CanFrame = struct {
+    id: u32,
+    dlc: u8,
+    data: []const u8,
+
+    pub fn init(buf: [*c]const u8) CanFrame {
+        const id = (@as(u32, buf[0]) << 24) | (@as(u32, buf[1]) << 16) | (@as(u32, buf[2]) << 8) | buf[3];
+        const dlc = buf[4];
+        const data = buf[8 .. 8 + dlc];
+        return CanFrame{
+            .id = id,
+            .dlc = dlc,
+            .data = data,
+        };
+    }
+};
+
 pub const Packet = struct {
     datalink: c_int,
     ts: c.struct_timeval,
     caplen: c_uint,
     endianess: std.builtin.Endian,
 
+    // TODO: break these out into tagged union?
     ethernet: ?EthernetHeader,
     ipv4: ?Ipv4Header,
+    can: ?CanFrame,
     transport: ?Transport,
 
     pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr, endianess: std.builtin.Endian) ?Packet {
@@ -214,6 +234,7 @@ pub const Packet = struct {
             .endianess = endianess,
             .ethernet = null,
             .ipv4 = null,
+            .can = null,
             .transport = null,
         };
 
@@ -251,6 +272,10 @@ pub const Packet = struct {
                     },
                     else => return null,
                 }
+            },
+            c.DLT_CAN_SOCKETCAN => {
+                const can = CanFrame.init(buf);
+                pkt.can = can;
             },
             else => return null,
         }
@@ -339,6 +364,14 @@ pub const Packet = struct {
                         try stdout.print("ICMP\n", .{});
                         try stdout.print("  icmp type: {d}\n", .{icmp.type});
                         try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{icmp.payload});
+                    },
+                    .can => |can| {
+                        try stdout.print("CAN:\n", .{});
+                        try stdout.print("  id: 0x{x}\n", .{can.id});
+                        try stdout.print("  dlc: {d}\n", .{can.dlc});
+                        try stdout.print("  data: ", .{});
+                        for (can.data) |byte| try stdout.print("{x:0>2} ", .{byte});
+                        try stdout.print("\n", .{});
                     },
                     else => try stdout.print("Transport: protocol {d} not parsed\n", .{ip.protocol}),
                 };

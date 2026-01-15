@@ -40,3 +40,7 @@ This is a Zig-based network packet sniffer called "sniff" that uses libpcap for 
 - ✅ WireGuard
 - ❌ IPv6 (not supported)
 - 🔄 CAN (planned - see AGENTS.md for implementation plan)
+
+## Important Instructions
+- NEVER commit changes unless explicitly asked by the user
+- Always ask before making git commits
