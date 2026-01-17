@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Filter = @This();
 
-contents: []const u8,
+contents: []u8,
 
 pub fn init(filter_path: []const u8) !?Filter {
     var buf: [1024]u8 = undefined;

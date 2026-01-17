@@ -91,7 +91,9 @@ pub fn main() !void {
     }
 
     const filter = try Filter.init(args.filter_path) orelse Filter{ .contents = "" };
-    _ = filter;
+    if (args.verbose) {
+        std.log.info("Using the following filter contents:\n{s}", .{filter.contents});
+    }
 
     var dev = alldevs;
     while (dev) |d| {
