@@ -3,6 +3,7 @@ const std = @import("std");
 const Args = @This();
 
 device: []const u8,
+filter_path: []const u8,
 verbose: bool,
 list_devices: bool,
 wireguard_only: bool,
@@ -11,6 +12,7 @@ it: std.process.ArgIterator,
 const Option = enum {
     @"--device",
     @"-d",
+    @"--filter-path",
     @"--help",
     @"-h",
     @"--list",
@@ -27,17 +29,19 @@ pub fn help(process_name: []const u8) noreturn {
         \\
         \\OPTIONS:
         \\  -d, --device <name>    Network device to sniff (required)
+        \\  --filter-path          path to filter config file
         \\  -l, --list             List available network devices
         \\  -v, --verbose          Enable verbose output
         \\  -w, --wireguard        Show only WireGuard packets
         \\  -h, --help             Show this help message
         \\
         \\EXAMPLES:
-        \\  {s} -d en0             # Sniff on device en0
-        \\  {s} -d en0 -w          # Show only WireGuard packets
-        \\  {s} --list             # List available devices
+        \\  {s} -d en0                      # Sniff on device en0
+        \\  {s} -d en0 -w                   # Show only WireGuard packets
+        \\  {s} --list                      # List available devices
+        \\  {s} --filter-path filter.txt    #  
         \\
-    , .{ process_name, process_name, process_name, process_name });
+    , .{ process_name, process_name, process_name, process_name, process_name });
     std.process.exit(0);
 }
 
@@ -50,6 +54,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     const process_name = args.next() orelse "sniff_zig";
 
     var device: []const u8 = "";
+    var filter_path: []const u8 = "";
     var verbose: bool = false;
     var list_devices: bool = false;
     var wireguard_only: bool = false;
@@ -77,11 +82,18 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
             .@"--wireguard", .@"-w" => {
                 wireguard_only = true;
             },
+            .@"--filter-path" => {
+                filter_path = args.next() orelse {
+                    std.debug.print("Error: Unknown option '{s}'\n\n", .{arg});
+                    help(process_name);
+                };
+            },
         }
     }
 
     return .{
         .device = device,
+        .filter_path = filter_path,
         .verbose = verbose,
         .list_devices = list_devices,
         .wireguard_only = wireguard_only,
