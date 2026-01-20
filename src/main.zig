@@ -90,10 +90,13 @@ pub fn main() !void {
         return;
     }
 
-    const filter = try Filter.init(args.filter_path) orelse Filter{ .contents = "" };
+    var filter = try Filter.init(args.filter_path) orelse Filter{ .file_contents = "" };
     if (args.verbose) {
-        std.log.info("Using the following filter contents:\n{s}", .{filter.contents});
+        std.log.info("Using the following filter contents:\n{s}", .{filter.file_contents});
     }
+
+    const filter_rules = filter.parse_filter();
+    _ = filter_rules;
 
     var dev = alldevs;
     while (dev) |d| {
