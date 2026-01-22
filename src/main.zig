@@ -4,7 +4,6 @@ const packet = @import("packet.zig");
 const http = @import("application/http.zig");
 const wireguard = @import("application/wireguard.zig");
 const helpers = @import("helpers.zig");
-const Filter = @import("Filter.zig");
 
 const c = @cImport({
     @cInclude("pcap.h");
@@ -90,13 +89,31 @@ pub fn main() !void {
         return;
     }
 
-    var filter = try Filter.init(args.filter_path);
-    if (args.verbose) {
-        std.log.info("Using the following filter contents:\n{s}", .{filter.buf[0..filter.len]});
+    // Filter entrypoint
+    // used for filtering traffic based on various parameters
+    // e.g. in_addr and out_addr
+    const file = std.fs.cwd().openFile(args.filter_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.log.err("Can't find provided filter config file: {s}", .{args.filter_path});
+            return error.FileNotFound;
+        },
+        else => return err,
+    };
+    defer file.close();
+
+    var file_buf: [1024]u8 = undefined;
+    const n = try file.read(&file_buf);
+
+    var filter_map = std.StringHashMap().init(allocator);
+
+    var file_it = std.mem.splitAny(u8, file_buf[0..n], "\n");
+    while (file_it.next()) |line| {
+        var line_it = std.mem.splitAny(u8, &line, "=");
+
+        while (line_it.next()) |x| {}
     }
 
-    const filter_rules = filter.parse_filter();
-    _ = filter_rules;
+    //TODO: add a filter dump in args.verbose
 
     var dev = alldevs;
     while (dev) |d| {

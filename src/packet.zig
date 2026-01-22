@@ -25,7 +25,7 @@ const EthernetHeader = struct {
         const ether_type: u16 = (@as(u16, buf[12]) << 8) | buf[13];
         const dst_mac = buf[0..6];
         const src_mac = buf[6..12];
-        return EthernetHeader{
+        return .{
             .ether_type = ether_type,
             .src_mac = src_mac,
             .dst_mac = dst_mac,
@@ -62,7 +62,7 @@ const Ipv4Header = struct {
         const dst_addr = buf[16..20];
         const options: ?[]const u8 = if (hdr_len > 20) buf[20..hdr_len] else null;
 
-        return Ipv4Header{
+        return .{
             .version_ihl = version_ihl,
             .dscp_ecn = descp_ecn,
             .total_length = total_length,
