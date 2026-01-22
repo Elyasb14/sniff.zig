@@ -256,7 +256,7 @@ pub const Packet = struct {
                 switch (version) {
                     4 => pkt.parse_ipv4(buf[0..]),
                     6 => {
-                        std.log.err("IPv6 not supported", .{});
+                        std.log.err("\x1b[31mIPv6 not supported\x1b[0m", .{});
                         return null;
                     },
                     else => return null,
@@ -267,7 +267,7 @@ pub const Packet = struct {
                 switch (family) {
                     2 => pkt.parse_ipv4(buf[4..]),
                     24 => {
-                        std.log.err("IPv6 not supported", .{});
+                        std.log.err("\x1b[31mIPv6 not supported\x1b[0m", .{});
                         return null;
                     },
                     else => return null,

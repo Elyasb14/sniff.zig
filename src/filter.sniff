@@ -1,2 +1,4 @@
-fhjdks
-fdsfd
+addr = 10.224.1.1
+addr = 10.224.2.2
+transport = udp
+transport = tcp

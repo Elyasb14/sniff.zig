@@ -73,19 +73,19 @@ pub fn main() !void {
     }
 
     if (args.verbose) {
-        std.log.info("Starting packet capture on device: {s}", .{args.device});
+        std.log.info("\x1b[32mStarting packet capture on device: {s}\x1b[0m", .{args.device});
     }
 
     var errbuf: [c.PCAP_ERRBUF_SIZE]u8 = undefined;
 
     if (c.pcap_init(c.PCAP_CHAR_ENC_UTF_8, &errbuf) != 0) {
-        std.log.err("Failed to initialize pcap\n", .{});
+        std.log.err("\x1b[31mFailed to initialize pcap\n\x1b[0m", .{});
         return;
     }
 
     var alldevs: ?*c.pcap_if_t = null;
     if (c.pcap_findalldevs(&alldevs, &errbuf) != 0) {
-        std.log.err("pcap_findalldevs failed: {s}\n", .{errbuf});
+        std.log.err("\x1b[31mpcap_findalldevs failed: {s}\n\x1b[0m", .{errbuf});
         return;
     }
 
@@ -94,7 +94,7 @@ pub fn main() !void {
     // e.g. in_addr and out_addr
     const file = std.fs.cwd().openFile(args.filter_path, .{}) catch |err| switch (err) {
         error.FileNotFound => {
-            std.log.err("Can't find provided filter config file: {s}", .{args.filter_path});
+            std.log.err("\x1b[31mCan't find provided filter config file: {s}\x1b[0m", .{args.filter_path});
             return error.FileNotFound;
         },
         else => return err,
@@ -104,13 +104,31 @@ pub fn main() !void {
     var file_buf: [1024]u8 = undefined;
     const n = try file.read(&file_buf);
 
-    var filter_map = std.StringHashMap().init(allocator);
+    var filter_map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
 
     var file_it = std.mem.splitAny(u8, file_buf[0..n], "\n");
     while (file_it.next()) |line| {
-        var line_it = std.mem.splitAny(u8, &line, "=");
+        if (line.len == 0) continue;
+        var line_it = std.mem.splitAny(u8, line, "=");
+        const key = line_it.next() orelse continue;
+        const value = line_it.next() orelse "";
 
-        while (line_it.next()) |x| {}
+        const gop = try filter_map.getOrPut(key);
+        if (!gop.found_existing) {
+            gop.value_ptr.* = try std.ArrayList([]const u8).initCapacity(allocator, 1024);
+        }
+        try gop.value_ptr.append(allocator, value);
+    }
+
+    if (args.verbose) {
+        var key_it = filter_map.keyIterator();
+        while (key_it.next()) |key| {
+            const values = filter_map.get(key.*).?;
+            std.log.info("\x1b[32mKEY: {s} ({d} values)\x1b[0m", .{ key.*, values.items.len });
+            for (values.items) |value| {
+                std.log.info("\x1b[32m  {s}\x1b[0m", .{value});
+            }
+        }
     }
 
     //TODO: add a filter dump in args.verbose
@@ -119,7 +137,7 @@ pub fn main() !void {
     while (dev) |d| {
         if (std.mem.eql(u8, std.mem.span(d.name), args.device)) {
             if (args.verbose) {
-                std.log.info("Found device: {s}", .{args.device});
+                std.log.info("\x1b[32mFound device: {s}\x1b[0m", .{args.device});
                 const name = std.mem.span(d.name);
                 std.debug.print("Device: {s}\n", .{name});
                 if (d.description) |desc| {
@@ -161,7 +179,7 @@ pub fn main() !void {
                 return;
             }
             const dlt = c.pcap_datalink(chan);
-            std.log.info("Link-layer type: {any} ({s})", .{
+            std.log.info("\x1b[32mLink-layer type: {any} ({s})\x1b[0m", .{
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
@@ -188,11 +206,11 @@ pub fn main() !void {
                         break;
                     },
                     PCAP_EOF => {
-                        std.log.err("EOF", .{});
+                        std.log.err("\x1b[31mEOF\x1b[0m", .{});
                         break;
                     },
                     else => {
-                        std.log.err("Unexpected return {d}", .{res});
+                        std.log.err("\x1b[31mUnexpected return {d}\x1b[0m", .{res});
                         break;
                     },
                 }
@@ -205,6 +223,6 @@ pub fn main() !void {
         dev = d.next;
     }
 
-    std.log.err("Can't open requested device: \x1b[31m{s}\x1b[0m", .{args.device});
+    std.log.err("\x1b[31mCan't open requested device: {s}\x1b[0m", .{args.device});
     c.pcap_freealldevs(alldevs);
 }
