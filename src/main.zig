@@ -139,11 +139,11 @@ pub fn main() !void {
             if (args.verbose) {
                 std.log.info("\x1b[32mFound device: {s}\x1b[0m", .{args.device});
                 const name = std.mem.span(d.name);
-                std.debug.print("Device: {s}\n", .{name});
+                std.log.info("\x1b[32mDevice: {s}\x1b[0m", .{name});
                 if (d.description) |desc| {
-                    std.debug.print("  Description: {s}\n", .{std.mem.span(desc)});
+                    std.log.info("\x1b[32m  Description: {s}\x1b[0m", .{std.mem.span(desc)});
                 }
-                std.debug.print("  Addresses:\n", .{});
+                std.log.info("\x1b[32m  Addresses:\x1b[0m", .{});
                 var addr = d.addresses;
                 while (addr) |a| {
                     if (a.*.addr) |sa_ptr| {
@@ -151,9 +151,9 @@ pub fn main() !void {
                         if (sa.sa_family == c.AF_INET) {
                             const sin = @as(*const c.struct_sockaddr_in, @ptrCast(@alignCast(sa_ptr)));
                             const ip_addr = @as(*const [4]u8, @ptrCast(&sin.sin_addr.s_addr));
-                            std.debug.print("    IPv4: {d}.{d}.{d}.{d}\n", .{ ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3] });
+                            std.log.info("\x1b[32m    IPv4: {d}.{d}.{d}.{d}\x1b[0m", .{ ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3] });
                         } else if (sa.sa_family == c.AF_INET6) {
-                            std.debug.print("    IPv6: (see ifconfig for details)\n", .{});
+                            std.log.info("\x1b[32m    IPv6: (see ifconfig for details)\x1b[0m", .{});
                         }
                     }
                     addr = a.*.next;
