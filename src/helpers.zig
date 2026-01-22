@@ -9,7 +9,7 @@ pub fn list_devices() !void {
     var alldevs: ?*c.pcap_if_t = null;
 
     if (c.pcap_findalldevs(&alldevs, &errbuf) != 0) {
-        std.log.err("\x1b[31mpcap_findalldevs failed: {s}\n\x1b[0m", .{errbuf});
+        std.log.err("pcap_findalldevs failed: {s}\n", .{errbuf});
         return;
     }
 
