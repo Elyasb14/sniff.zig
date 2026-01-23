@@ -152,8 +152,6 @@ pub fn main() !void {
         }
     }
 
-    //TODO: add a filter dump in args.verbose
-
     var dev = alldevs;
     while (dev) |d| {
         if (std.mem.eql(u8, std.mem.span(d.name), args.device)) {
