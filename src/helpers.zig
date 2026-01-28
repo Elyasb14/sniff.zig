@@ -44,7 +44,7 @@ pub fn list_devices() !void {
                         const ip_addr = @as(*const [4]u8, @ptrCast(&sin.sin_addr.s_addr));
                         std.debug.print("       - IPv4: {d}.{d}.{d}.{d}\n", .{ ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3] });
                     } else if (sa.sa_family == c.AF_INET6) {
-                        std.debug.print("       - IPv6: (see ifconfig for details)\n", .{});
+                        std.debug.print("       - IPv6: (run `ip addr show` for details)\n", .{});
                     }
                 }
                 addr = a.*.next;

@@ -2,7 +2,6 @@ const std = @import("std");
 const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
-const wireguard = @import("application/wireguard.zig");
 const helpers = @import("helpers.zig");
 
 fn coloredLog(
@@ -36,12 +35,11 @@ const PCAP_TIMEOUT = 0;
 const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
 
-fn dissect_transport_packet(pkt: packet.Packet, wireguard_only: bool) !void {
+fn dissect_transport_packet(pkt: packet.Packet) !void {
     std.debug.assert(pkt.transport != null); // need a Transport to unrwap
     const transport = pkt.transport.?;
     switch (transport) {
         .tcp => {
-            if (wireguard_only) return;
             const dst_port = transport.tcp.dst_port;
             const src_port = transport.tcp.src_port;
 
@@ -53,26 +51,9 @@ fn dissect_transport_packet(pkt: packet.Packet, wireguard_only: bool) !void {
             }
         },
         .udp => {
-            const dst_port = transport.udp.dst_port;
-            const src_port = transport.udp.src_port;
-
-            if (dst_port == 51820 or src_port == 51820) {
-                if (wireguard.WireGuardPacket.init(transport.udp.payload.ptr, transport.udp.payload.len)) |wg| {
-                    std.debug.print("\x1b[33mWireGuard:\x1b[0m\n", .{});
-                    std.debug.print("  type: {d} ({s})\n", .{ wg.msg_type, wg.msgTypeName() });
-                    std.debug.print("  sender index: 0x{x}\n", .{wg.sender_index});
-                    if (wg.receiver_index) |ri| std.debug.print("  receiver index: 0x{x}\n", .{ri});
-                    std.debug.print("  payload length: {d} bytes\n", .{wg.payload.len});
-                } else {
-                    std.debug.print("WireGuard: (invalid packet)\n", .{});
-                }
-            } else if (!wireguard_only) {
-                try pkt.pp();
-            }
+            try pkt.pp();
         },
-        else => {
-            if (wireguard_only) return;
-        },
+        else => {},
     }
 }
 
@@ -172,7 +153,7 @@ pub fn main() !void {
                             const ip_addr = @as(*const [4]u8, @ptrCast(&sin.sin_addr.s_addr));
                             std.log.info("    IPv4: {d}.{d}.{d}.{d}", .{ ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3] });
                         } else if (sa.sa_family == c.AF_INET6) {
-                            std.log.info("    IPv6: (see ifconfig for details)", .{});
+                            std.log.info("    IPv6: (run `ip addr show` for details)", .{});
                         }
                     }
                     addr = a.*.next;
@@ -213,8 +194,8 @@ pub fn main() !void {
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
                             if (pkt.transport) |_| {
                                 // wireshark has the notion of "dissector tree"
-                                try dissect_transport_packet(pkt, args.wireguard_only);
-                            } else if (!args.wireguard_only) try pkt.pp();
+                                try dissect_transport_packet(pkt);
+                            }
                         } else {
                             continue;
                         }

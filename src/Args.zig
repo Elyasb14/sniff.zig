@@ -6,21 +6,19 @@ device: []const u8,
 filter_path: []const u8,
 verbose: bool,
 list_devices: bool,
-wireguard_only: bool,
 it: std.process.ArgIterator,
 
 const Option = enum {
     @"--device",
     @"-d",
     @"--filter-path",
+    @"-fp",
     @"--help",
     @"-h",
     @"--list",
     @"-l",
     @"--verbose",
     @"-v",
-    @"--wireguard",
-    @"-w",
 };
 
 pub fn help(process_name: []const u8) noreturn {
@@ -29,19 +27,17 @@ pub fn help(process_name: []const u8) noreturn {
         \\
         \\OPTIONS:
         \\  -d, --device <name>    Network device to sniff (required)
-        \\  --filter-path          path to filter config file
+        \\  -fp, --filter-path     Path to filter config file
         \\  -l, --list             List available network devices
         \\  -v, --verbose          Enable verbose output
-        \\  -w, --wireguard        Show only WireGuard packets
         \\  -h, --help             Show this help message
         \\
         \\EXAMPLES:
         \\  {s} -d en0                      # Sniff on device en0
-        \\  {s} -d en0 -w                   # Show only WireGuard packets
         \\  {s} --list                      # List available devices
-        \\  {s} --filter-path filter.txt    #  
+        \\  {s} --filter-path filter.txt    # path to filter config file 
         \\
-    , .{ process_name, process_name, process_name, process_name, process_name });
+    , .{ process_name, process_name, process_name, process_name });
     std.process.exit(0);
 }
 
@@ -57,7 +53,6 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var filter_path: []const u8 = "";
     var verbose: bool = false;
     var list_devices: bool = false;
-    var wireguard_only: bool = false;
 
     while (args.next()) |arg| {
         const option = std.meta.stringToEnum(Option, arg) orelse {
@@ -79,10 +74,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
             .@"--verbose", .@"-v" => {
                 verbose = true;
             },
-            .@"--wireguard", .@"-w" => {
-                wireguard_only = true;
-            },
-            .@"--filter-path" => {
+            .@"--filter-path", .@"-fp" => {
                 filter_path = args.next() orelse {
                     std.debug.print("Error: Unknown option '{s}'\n\n", .{arg});
                     help(process_name);
@@ -96,7 +88,6 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .filter_path = filter_path,
         .verbose = verbose,
         .list_devices = list_devices,
-        .wireguard_only = wireguard_only,
         .it = args,
     };
 }
