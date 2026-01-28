@@ -1,5 +1,11 @@
 const std = @import("std");
-const packet = @import("../packet.zig");
+
+const WGMsgType = enum(u8) {
+    HANDSHAKE_INIT = 1,
+    HANDSHAKE_RESP = 2,
+    COOKIE_REPLY = 3,
+    TRANSPORT_DATA = 4,
+};
 
 pub const WireGuardPacket = struct {
     msg_type: u8,
@@ -10,7 +16,7 @@ pub const WireGuardPacket = struct {
     pub fn init(buf: [*c]const u8, length: usize) ?WireGuardPacket {
         if (length < 8) return null;
 
-        const msg_type = buf[0];
+        const msg_type: WGMsgType = std.enums.fromInt(WGMsgType, buf[0]) orelse return null;
         const sender_index = std.mem.readInt(u32, buf[4..8], .little);
 
         var receiver: ?u32 = null;
@@ -18,21 +24,21 @@ pub const WireGuardPacket = struct {
 
         // TODO: get these magic constants from somehwere
         switch (msg_type) {
-            1 => {
+            .HANDSHAKE_INIT => {
                 if (length < 8 + 32 + 8 + 24 + 16 + 48) return null;
                 payload_start = 8 + 32 + 8 + 24 + 16 + 48;
             },
-            2 => {
+            .HANDSHAKE_RESP => {
                 if (length < 8 + 4 + 32 + 8 + 24 + 16 + 48) return null;
                 receiver = std.mem.readInt(u32, buf[8..12], .little);
                 payload_start = 8 + 4 + 32 + 8 + 24 + 16 + 48;
             },
-            3 => {
+            .COOKIE_REPLY => {
                 if (length < 8 + 4 + 32 + 16) return null;
                 receiver = std.mem.readInt(u32, buf[8..12], .little);
                 payload_start = 8 + 4 + 32 + 16;
             },
-            4 => {
+            .TRANSPORT_DATA => {
                 if (length < 8 + 4 + 4) return null;
                 receiver = std.mem.readInt(u32, buf[8..12], .little);
                 payload_start = 8 + 4 + 4;
