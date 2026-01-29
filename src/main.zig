@@ -35,26 +35,17 @@ const PCAP_TIMEOUT = 0;
 const PCAP_ERROR = -1;
 const PCAP_EOF = -2;
 
-fn dissect_transport_packet(pkt: packet.Packet) !void {
-    std.debug.assert(pkt.transport != null); // need a Transport to unrwap
-    const transport = pkt.transport.?;
-    switch (transport) {
-        .tcp => {
-            const dst_port = transport.tcp.dst_port;
-            const src_port = transport.tcp.src_port;
-
-            if (dst_port == 80 or src_port == 80) {
-                const http_pkt = http.HttpPacket.init(pkt);
-                if (http_pkt) |x| {
-                    std.debug.print("PACKET: {s}\n", .{x.msg.response.body});
-                }
-            }
-        },
-        .udp => {
-            try pkt.pp();
-        },
-        else => {},
+/// filter packet based on transport type
+/// returns true if packet has provided tpt
+fn filter_transport(pkt: packet.Packet, tpt: [][]const u8) bool {
+    if (pkt.transport) |y| {
+        for (tpt) |x| {
+            if (std.mem.eql(u8, @tagName(y), x))
+                return true;
+        }
+        return false;
     }
+    return false;
 }
 
 pub fn main() !void {
@@ -89,48 +80,6 @@ pub fn main() !void {
     if (c.pcap_findalldevs(&alldevs, &errbuf) != 0) {
         std.log.err("pcap_findalldevs failed: {s}\n", .{errbuf});
         return;
-    }
-
-    // Filter entrypoint
-    // used for filtering traffic based on various parameters
-    // e.g. in_addr and out_addr
-    const file = std.fs.cwd().openFile(args.filter_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => {
-            std.log.err("Can't find provided filter config file: {s}", .{args.filter_path});
-            return error.FileNotFound;
-        },
-        else => return err,
-    };
-    defer file.close();
-
-    var file_buf: [1024]u8 = undefined;
-    const n = try file.read(&file_buf);
-
-    var filter_map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
-
-    var file_it = std.mem.splitAny(u8, file_buf[0..n], "\n");
-    while (file_it.next()) |line| {
-        if (line.len == 0) continue;
-        var line_it = std.mem.splitAny(u8, line, "=");
-        const key = line_it.next() orelse continue;
-        const value = line_it.next() orelse "";
-
-        const gop = try filter_map.getOrPut(key);
-        if (!gop.found_existing) {
-            gop.value_ptr.* = try std.ArrayList([]const u8).initCapacity(allocator, 1024);
-        }
-        try gop.value_ptr.append(allocator, value);
-    }
-
-    if (args.verbose) {
-        var key_it = filter_map.keyIterator();
-        while (key_it.next()) |key| {
-            const values = filter_map.get(key.*).?;
-            std.log.info("KEY: {s} ({d} values)", .{ key.*, values.items.len });
-            for (values.items) |value| {
-                std.log.info("  {s}", .{value});
-            }
-        }
     }
 
     var dev = alldevs;
@@ -183,6 +132,9 @@ pub fn main() !void {
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
+            var filter = try allocator.alloc([]const u8, 1024);
+            filter[0] = "icmp";
+
             while (true) {
                 var hdr: [*c]c.struct_pcap_pkthdr = undefined;
                 var buf: [*c]const u8 = undefined;
@@ -192,9 +144,10 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            if (pkt.transport) |_| {
-                                // wireshark has the notion of "dissector tree"
-                                try dissect_transport_packet(pkt);
+                            if (filter_transport(pkt, filter)) {
+                                try pkt.pp();
+                            } else {
+                                continue;
                             }
                         } else {
                             continue;
