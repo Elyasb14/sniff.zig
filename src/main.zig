@@ -37,10 +37,10 @@ const PCAP_EOF = -2;
 
 /// filter packet based on transport type
 /// returns true if packet has provided tpt
-fn filter_transport(pkt: packet.Packet, tpt: [][]const u8) bool {
-    if (pkt.transport) |y| {
-        for (tpt) |x| {
-            if (std.mem.eql(u8, @tagName(y), x))
+fn filter_transport(pkt: packet.Packet, filter: [][]const u8) bool {
+    if (pkt.transport) |x| {
+        for (filter) |y| {
+            if (std.mem.eql(u8, @tagName(x), y))
                 return true;
         }
         return false;
