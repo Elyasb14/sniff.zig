@@ -37,13 +37,15 @@ const PCAP_EOF = -2;
 
 /// filter packet based on transport type
 /// returns true if packet has provided tpt
-fn filter_transport(pkt: packet.Packet, filter: [][]const u8) bool {
-    if (pkt.transport) |x| {
-        for (filter) |y| {
-            if (std.mem.eql(u8, @tagName(x), y))
-                return true;
-        }
-        return false;
+fn should_filter_transport_packet(pkt: packet.Packet, args: Args) bool {
+    if (pkt.transport) |tpt| {
+        return switch (tpt) {
+            .tcp => args.tcp,
+            .udp => args.udp,
+            .icmp => args.icmp,
+            .can => args.can,
+            .unknown => false,
+        };
     }
     return false;
 }
@@ -132,10 +134,6 @@ pub fn main() !void {
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
-            // where filtering starts
-            var filter = try allocator.alloc([]const u8, 1024);
-            filter[0] = "icmp";
-
             var is_valid_tpt_filter = false;
             const tpt_count: usize = @as(usize, @intFromBool(args.icmp)) + @as(usize, @intFromBool(args.tcp)) + @as(usize, @intFromBool(args.udp)) + @as(usize, @intFromBool(args.can));
 
@@ -155,7 +153,7 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            if (is_valid_tpt_filter) {
+                            if (should_filter_transport_packet(pkt, args)) {
                                 try pkt.pp();
                             } else {
                                 continue;
