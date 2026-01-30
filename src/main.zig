@@ -135,6 +135,16 @@ pub fn main() !void {
             var filter = try allocator.alloc([]const u8, 1024);
             filter[0] = "icmp";
 
+            var is_valid_tpt_filter = false;
+            const tpt_count: usize = @as(usize, @intFromBool(args.icmp)) + @as(usize, @intFromBool(args.tcp)) + @as(usize, @intFromBool(args.udp)) + @as(usize, @intFromBool(args.can));
+
+            if (tpt_count == 1) {
+                is_valid_tpt_filter = true;
+            } else {
+                std.log.err("only one transport filter rule and be applied, {d} provided", .{tpt_count});
+                return;
+            }
+
             while (true) {
                 var hdr: [*c]c.struct_pcap_pkthdr = undefined;
                 var buf: [*c]const u8 = undefined;
@@ -144,7 +154,7 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            if (filter_transport(pkt, filter)) {
+                            if (is_valid_tpt_filter) {
                                 try pkt.pp();
                             } else {
                                 continue;
