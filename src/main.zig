@@ -132,6 +132,7 @@ pub fn main() !void {
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
+            // where filtering starts
             var filter = try allocator.alloc([]const u8, 1024);
             filter[0] = "icmp";
 
