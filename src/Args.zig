@@ -14,10 +14,10 @@ icmp: bool,
 can: bool,
 
 // IP/port filters
-src_ip: []const u8,
-dst_ip: []const u8,
-src_port: []const u8,
-dst_port: []const u8,
+src_ip: ?[]const u8 = null,
+dst_ip: ?[]const u8 = null,
+src_port: ?[]const u8 = null,
+dst_port: ?[]const u8 = null,
 
 it: std.process.ArgIterator,
 
@@ -94,10 +94,10 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var can: bool = false;
 
     // IP/port filters
-    var src_ip: []const u8 = "";
-    var dst_ip: []const u8 = "";
-    var src_port: []const u8 = "";
-    var dst_port: []const u8 = "";
+    var src_ip: ?[]const u8 = null;
+    var dst_ip: ?[]const u8 = null;
+    var src_port: ?[]const u8 = null;
+    var dst_port: ?[]const u8 = null;
 
     while (args.next()) |arg| {
         const option = std.meta.stringToEnum(Option, arg) orelse {

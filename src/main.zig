@@ -3,6 +3,7 @@ const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
 const helpers = @import("helpers.zig");
+const Filter = @import("Filter.zig").Filter;
 
 fn coloredLog(
     comptime message_level: std.log.Level,
@@ -141,15 +142,8 @@ pub fn main() !void {
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
-            var is_valid_tpt_filter = false;
-            const tpt_count: usize = @as(usize, @intFromBool(args.icmp)) + @as(usize, @intFromBool(args.tcp)) + @as(usize, @intFromBool(args.udp)) + @as(usize, @intFromBool(args.can));
-
-            if (tpt_count == 1) {
-                is_valid_tpt_filter = true;
-            } else {
-                std.log.err("only one transport filter rule can be applied, {d} provided", .{tpt_count});
-                return;
-            }
+            // filter entrypoint
+            const filter = try Filter.init(args) orelse return error.BAD;
 
             while (true) {
                 var hdr: [*c]c.struct_pcap_pkthdr = undefined;
@@ -160,9 +154,10 @@ pub fn main() !void {
                     PCAP_OK => {
                         // We got a valid packet
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
-                            if (should_filter_transport_packet(pkt, args)) {
+                            if (filter.match_w_packet(pkt)) {
                                 try pkt.pp();
                             } else {
+                                // TODO: does this actually provide ay value?
                                 if (args.verbose) std.log.info("filtering out packet here", .{});
                                 continue;
                             }
