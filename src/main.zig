@@ -39,13 +39,20 @@ const PCAP_EOF = -2;
 /// returns true if packet has provided tpt
 fn should_filter_transport_packet(pkt: packet.Packet, args: Args) bool {
     if (pkt.transport) |tpt| {
-        return switch (tpt) {
+        const ret = switch (tpt) {
             .tcp => args.tcp,
             .udp => args.udp,
             .icmp => args.icmp,
             .can => args.can,
             .unknown => false,
         };
+
+        // TODO: this should be printed before we even receive any packets
+        if (ret and args.verbose) {
+            std.log.info("filtering packets with {s} transport", .{@tagName(tpt)});
+        }
+
+        return ret;
     }
     return false;
 }
@@ -140,7 +147,7 @@ pub fn main() !void {
             if (tpt_count == 1) {
                 is_valid_tpt_filter = true;
             } else {
-                std.log.err("only one transport filter rule and be applied, {d} provided", .{tpt_count});
+                std.log.err("only one transport filter rule can be applied, {d} provided", .{tpt_count});
                 return;
             }
 
@@ -156,6 +163,7 @@ pub fn main() !void {
                             if (should_filter_transport_packet(pkt, args)) {
                                 try pkt.pp();
                             } else {
+                                if (args.verbose) std.log.info("filtering out packet here", .{});
                                 continue;
                             }
                         } else {
