@@ -42,19 +42,22 @@ pub const Filter = struct {
     }
 
     pub fn match_w_packet(self: Filter, pkt: Packet) bool {
+        inline for (std.meta.fields(Filter)) |field| {
+            if (@field(self, field.name))
+                std.debug.assert(field.name != null);
+        }
         var matched = false;
-        matched = true;
 
         if (pkt.transport) |tpt| {
-            if (std.mem.eql(u8, @tagName(tpt), @tagName(self.transport)))
+            if (std.mem.eql(u8, @tagName(tpt), @tagName(self.transport.?)))
                 matched = true;
         }
 
         if (pkt.ipv4) |ipv4| {
-            if (std.mem.eql(u8, self.dst_ip, ipv4.dst_addr))
+            if (std.mem.eql(u8, self.dst_ip.?, ipv4.dst_addr))
                 matched = true;
 
-            if (std.mem.eql(u8, self.src_ip, ipv4.src_addr))
+            if (std.mem.eql(u8, self.src_ip.?, ipv4.src_addr))
                 matched = true;
         }
     }
