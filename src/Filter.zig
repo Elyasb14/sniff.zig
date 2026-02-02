@@ -42,23 +42,66 @@ pub const Filter = struct {
     }
 
     pub fn match_w_packet(self: Filter, pkt: Packet) bool {
-        inline for (std.meta.fields(Filter)) |field| {
-            if (@field(self, field.name))
-                std.debug.assert(field.name != null);
+        if (self.transport) |tpt| {
+            if (tpt == .can) {
+                if (pkt.can == null) return false;
+            } else {
+                if (pkt.transport) |pkt_tpt| {
+                    const is_match = switch (pkt_tpt) {
+                        .tcp => tpt == .tcp,
+                        .udp => tpt == .udp,
+                        .icmp => tpt == .icmp,
+                        else => false,
+                    };
+                    if (!is_match) return false;
+                } else {
+                    return false;
+                }
+            }
         }
-        var matched = false;
 
-        if (pkt.transport) |tpt| {
-            if (std.mem.eql(u8, @tagName(tpt), @tagName(self.transport.?)))
-                matched = true;
+        if (self.src_ip) |ip| {
+            if (pkt.ipv4) |ipv4| {
+                if (!std.mem.eql(u8, ip, ipv4.src_addr)) return false;
+            } else {
+                return false;
+            }
         }
 
-        if (pkt.ipv4) |ipv4| {
-            if (std.mem.eql(u8, self.dst_ip.?, ipv4.dst_addr))
-                matched = true;
-
-            if (std.mem.eql(u8, self.src_ip.?, ipv4.src_addr))
-                matched = true;
+        if (self.dst_ip) |ip| {
+            if (pkt.ipv4) |ipv4| {
+                if (!std.mem.eql(u8, ip, ipv4.dst_addr)) return false;
+            } else {
+                return false;
+            }
         }
+
+        if (self.src_port) |port| {
+            if (pkt.transport) |transport| {
+                const match = switch (transport) {
+                    .tcp => |tcp| tcp.src_port == port,
+                    .udp => |udp| udp.src_port == port,
+                    else => false,
+                };
+                if (!match) return false;
+            } else {
+                return false;
+            }
+        }
+
+        if (self.dst_port) |port| {
+            if (pkt.transport) |transport| {
+                const match = switch (transport) {
+                    .tcp => |tcp| tcp.dst_port == port,
+                    .udp => |udp| udp.dst_port == port,
+                    else => false,
+                };
+                if (!match) return false;
+            } else {
+                return false;
+            }
+        }
+
+        return true;
     }
 };
