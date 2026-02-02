@@ -19,6 +19,10 @@ dst_ip: ?[]const u8 = null,
 src_port: ?[]const u8 = null,
 dst_port: ?[]const u8 = null,
 
+// Output options
+write_file: ?[]const u8 = null,
+max_packets: ?u32 = null,
+
 it: std.process.ArgIterator,
 
 const Option = enum {
@@ -39,6 +43,9 @@ const Option = enum {
     @"--dst-ip",
     @"--src-port",
     @"--dst-port",
+    @"--write",
+    @"-w",
+    @"--max-packets",
 };
 
 pub fn help(process_name: []const u8) noreturn {
@@ -63,6 +70,10 @@ pub fn help(process_name: []const u8) noreturn {
         \\  --dst-ip <address>     Filter by destination IP address
         \\  --src-port <port>      Filter by source port
         \\  --dst-port <port>      Filter by destination port
+        \\
+        \\OUTPUT OPTIONS:
+        \\  -w, --write <file>     Write matching packets to pcap file
+        \\  --max-packets <n>      Stop after capturing n packets
         \\
         \\EXAMPLES:
         \\  {s} -d en0                      # Sniff on device en0
@@ -98,6 +109,10 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var dst_ip: ?[]const u8 = null;
     var src_port: ?[]const u8 = null;
     var dst_port: ?[]const u8 = null;
+
+    // Output options
+    var write_file: ?[]const u8 = null;
+    var max_packets: ?u32 = null;
 
     while (args.next()) |arg| {
         const option = std.meta.stringToEnum(Option, arg) orelse {
@@ -161,6 +176,22 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                     help(process_name);
                 };
             },
+            .@"--write", .@"-w" => {
+                write_file = args.next() orelse {
+                    std.debug.print("Error: --write/-w requires a file path\n\n", .{});
+                    help(process_name);
+                };
+            },
+            .@"--max-packets" => {
+                const max_str = args.next() orelse {
+                    std.debug.print("Error: --max-packets requires a number\n\n", .{});
+                    help(process_name);
+                };
+                max_packets = std.fmt.parseInt(u32, max_str, 10) catch {
+                    std.debug.print("Error: --max-packets requires a valid number\n\n", .{});
+                    help(process_name);
+                };
+            },
         }
     }
 
@@ -177,6 +208,8 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .dst_ip = dst_ip,
         .src_port = src_port,
         .dst_port = dst_port,
+        .write_file = write_file,
+        .max_packets = max_packets,
         .it = args,
     };
 }

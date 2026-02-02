@@ -1,9 +1,17 @@
 const std = @import("std");
+const posix = std.posix;
 const Args = @import("Args.zig");
 const packet = @import("packet.zig");
 const http = @import("application/http.zig");
 const helpers = @import("helpers.zig");
 const Filter = @import("Filter.zig").Filter;
+const Trace = @import("trace.zig").Trace;
+
+var running: bool = true;
+
+fn sigint_handler(_: c_int) callconv(.c) void {
+    running = false;
+}
 
 fn coloredLog(
     comptime message_level: std.log.Level,
@@ -142,22 +150,55 @@ pub fn main() !void {
                 dlt, c.pcap_datalink_val_to_name(dlt),
             });
 
-            // filter entrypoint
             const filter = try Filter.init(args) orelse return error.BAD;
 
-            while (true) {
+            var trace: ?Trace = null;
+            if (args.write_file != null) {
+                trace = Trace.init(allocator, @intCast(dlt));
+                if (args.verbose) {
+                    std.log.info("Trace capture enabled, will write to: {s}", .{args.write_file.?});
+                }
+            }
+            defer if (trace) |*t| t.deinit();
+
+            const sigact = posix.Sigaction{
+                .handler = .{ .handler = sigint_handler },
+                .mask = posix.sigemptyset(),
+                .flags = 0,
+            };
+            posix.sigaction(posix.SIG.INT, &sigact, null);
+
+            var packet_count: u32 = 0;
+
+            while (running) {
                 var hdr: [*c]c.struct_pcap_pkthdr = undefined;
                 var buf: [*c]const u8 = undefined;
 
                 const res = c.pcap_next_ex(chan, &hdr, &buf);
                 switch (res) {
                     PCAP_OK => {
-                        // We got a valid packet
                         if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
                             if (filter.match_w_packet(pkt)) {
                                 try pkt.pp();
+
+                                if (trace) |*t| {
+                                    const caplen = hdr.*.caplen;
+                                    const ts_sec: u32 = @intCast(hdr.*.ts.tv_sec);
+                                    const ts_usec: u32 = @intCast(hdr.*.ts.tv_usec);
+                                    try t.append(buf[0..caplen], ts_sec, ts_usec);
+                                }
+
+                                packet_count += 1;
+
+                                if (args.max_packets) |max| {
+                                    if (packet_count >= max) {
+                                        if (args.verbose) {
+                                            std.log.info("Reached max packet count: {d}", .{max});
+                                        }
+                                        break;
+                                    }
+                                }
                             } else {
-                                // TODO: does this actually provide ay value?
                                 if (args.verbose) std.log.info("filtering out packet here", .{});
                                 continue;
                             }
@@ -165,7 +206,7 @@ pub fn main() !void {
                             continue;
                         }
                     },
-                    PCAP_TIMEOUT => continue, // No packet available yet (nonblocking)
+                    PCAP_TIMEOUT => continue,
                     PCAP_ERROR => {
                         std.log.err("{s}", .{c.pcap_geterr(chan)});
                         break;
@@ -180,6 +221,20 @@ pub fn main() !void {
                     },
                 }
             }
+
+            if (trace) |t| {
+                if (args.write_file) |path| {
+                    t.write_pcap(path) catch |err| {
+                        std.log.err("Failed to write pcap file: {any}", .{err});
+                        return;
+                    };
+                    std.log.info("Wrote {d} packets to {s}", .{ t.packet_count(), path });
+                }
+            }
+
+            c.pcap_close(chan);
+            c.pcap_freealldevs(alldevs);
+            return;
         } else {
             dev = d.next;
             continue;
