@@ -18,10 +18,19 @@ This is a Zig-based network packet sniffer called "sniff" that uses libpcap for 
 - Transport layer is a union supporting TCP, UDP, ICMP
 - Pretty printing via `pp()` method for packet display
 
-## Build & Test Commands
+## Build & Run Commands
 - Build: `zig build`
-- Run: `zig build run -- -d <device>` (use --list to see available devices)
+- Run: `./zig-out/bin/sniff -d <device>` (use --list to see available devices)
 - Test: `zig build test`
+
+## Filter Usage Examples
+- `./zig-out/bin/sniff -d en0 --tcp` - TCP packets only
+- `./zig-out/bin/sniff -d en0 --icmp --src-ip 8.8.8.8` - ICMP from 8.8.8.8
+- `./zig-out/bin/sniff -d en0 --udp --src-port 53` - UDP from port 53 (DNS)
+- `./zig-out/bin/sniff -d en0 --tcp --dst-port 443` - TCP to port 443 (HTTPS)
+- `./zig-out/bin/sniff -d en0 --icmp --dst-ip 10.0.2.10 -v` - ICMP to 10.0.2.10 with verbose output
+
+Note: Only one transport filter (--tcp/--udp/--icmp/--can) can be used at a time.
 
 ## Development Notes
 - Code follows Zig conventions with explicit error handling
