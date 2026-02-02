@@ -30,6 +30,11 @@ This is a Zig-based network packet sniffer called "sniff" that uses libpcap for 
 - Non-blocking packet capture with timeout handling
 - Promiscuous mode disabled by default
 
+## Code Style Conventions
+- **Function names**: Use `snake_case` for all function names (e.g., `log_rules`, `parse_ipv4`)
+- **No comments**: Do not add code comments unless explicitly asked
+- Follow existing Zig naming conventions throughout the codebase
+
 ## Protocol Support Status
 - ✅ Ethernet (DLT_EN10MB)
 - ✅ IPv4 

@@ -64,12 +64,12 @@ pub const Filter = struct {
         if (args.dst_port) |port| filter.dst_port = try std.fmt.parseInt(u16, port, 10);
         if (args.src_port) |port| filter.src_port = try std.fmt.parseInt(u16, port, 10);
 
-        if (args.verbose) filter.logRules();
+        if (args.verbose) filter.log_rules();
 
         return filter;
     }
 
-    fn logRules(self: Filter) void {
+    fn log_rules(self: Filter) void {
         std.log.info("Active filter rules:", .{});
         if (self.transport) |tpt| {
             std.log.info("  transport: {s}", .{@tagName(tpt)});
