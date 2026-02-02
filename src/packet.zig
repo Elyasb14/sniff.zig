@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("pcap.h");
 });
+const wireguard = @import("application/wireguard.zig");
 
 pub const Transport = union(enum) {
     tcp: TcpHeader,
@@ -9,6 +10,10 @@ pub const Transport = union(enum) {
     icmp: IcmpHeader,
     can: CanFrame,
     unknown: []const u8,
+};
+
+pub const Application = union(enum) {
+    wireguard: wireguard.WireGuardPacket,
 };
 
 const IpVersion = enum(u8) {
@@ -220,11 +225,11 @@ pub const Packet = struct {
     caplen: c_uint,
     endianess: std.builtin.Endian,
 
-    // TODO: break these out into tagged union?
     ethernet: ?EthernetHeader,
     ipv4: ?Ipv4Header,
     can: ?CanFrame,
     transport: ?Transport,
+    application: ?Application,
 
     pub fn init(dlt: c_int, buf: [*c]const u8, header: *c.struct_pcap_pkthdr, endianess: std.builtin.Endian) ?Packet {
         var pkt = Packet{
@@ -236,6 +241,7 @@ pub const Packet = struct {
             .ipv4 = null,
             .can = null,
             .transport = null,
+            .application = null,
         };
 
         switch (dlt) {
@@ -291,7 +297,16 @@ pub const Packet = struct {
 
         switch (ip.protocol) {
             6 => self.transport = Transport{ .tcp = TcpHeader.init(payload, self.endianess) },
-            17 => self.transport = Transport{ .udp = UdpHeader.init(payload, self.endianess) },
+            17 => {
+                const udp = UdpHeader.init(payload, self.endianess);
+                self.transport = Transport{ .udp = udp };
+
+                if (wireguard.WireGuardPacket.is_wireguard(udp.payload)) {
+                    if (wireguard.WireGuardPacket.init(udp.payload)) |wg| {
+                        self.application = Application{ .wireguard = wg };
+                    }
+                }
+            },
             1 => self.transport = Transport{ .icmp = IcmpHeader.init(payload, self.endianess) },
             else => {},
         }
@@ -358,7 +373,14 @@ pub const Packet = struct {
                         try stdout.print("  dst port: {d}\n", .{udp.dst_port});
                         try stdout.print("  length: {d}\n", .{udp.length});
                         try stdout.print("  checksum: 0x{x}\n", .{udp.checksum});
-                        try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{udp.payload});
+
+                        if (packet.application) |app| {
+                            switch (app) {
+                                .wireguard => |wg| try wg.pp(stdout),
+                            }
+                        } else {
+                            try stdout.print("  payload: \n\x1b[32m{s}\x1b[0m\n", .{udp.payload});
+                        }
                     },
                     .icmp => |icmp| {
                         try stdout.print("ICMP\n", .{});
