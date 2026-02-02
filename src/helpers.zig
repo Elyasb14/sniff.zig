@@ -57,3 +57,47 @@ pub fn list_devices() !void {
 
     c.pcap_freealldevs(alldevs);
 }
+
+const base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+pub fn base64_encode(input: []const u8, output: []u8) []u8 {
+    const output_len = ((input.len + 2) / 3) * 4;
+    if (output.len < output_len) return output[0..0];
+
+    var i: usize = 0;
+    var j: usize = 0;
+
+    while (i + 3 <= input.len) {
+        const b0 = input[i];
+        const b1 = input[i + 1];
+        const b2 = input[i + 2];
+
+        output[j] = base64_alphabet[b0 >> 2];
+        output[j + 1] = base64_alphabet[((b0 & 0x03) << 4) | (b1 >> 4)];
+        output[j + 2] = base64_alphabet[((b1 & 0x0f) << 2) | (b2 >> 6)];
+        output[j + 3] = base64_alphabet[b2 & 0x3f];
+
+        i += 3;
+        j += 4;
+    }
+
+    const remaining = input.len - i;
+    if (remaining == 1) {
+        const b0 = input[i];
+        output[j] = base64_alphabet[b0 >> 2];
+        output[j + 1] = base64_alphabet[(b0 & 0x03) << 4];
+        output[j + 2] = '=';
+        output[j + 3] = '=';
+        j += 4;
+    } else if (remaining == 2) {
+        const b0 = input[i];
+        const b1 = input[i + 1];
+        output[j] = base64_alphabet[b0 >> 2];
+        output[j + 1] = base64_alphabet[((b0 & 0x03) << 4) | (b1 >> 4)];
+        output[j + 2] = base64_alphabet[(b1 & 0x0f) << 2];
+        output[j + 3] = '=';
+        j += 4;
+    }
+
+    return output[0..j];
+}
