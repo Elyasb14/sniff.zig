@@ -4,6 +4,91 @@ const packet = @import("packet.zig");
 const http = @import("application/http.zig");
 const helpers = @import("helpers.zig");
 const Filter = @import("Filter.zig").Filter;
+const PacketGui = @import("gui.zig").PacketGui;
+const rl = @cImport({
+    @cInclude("raylib.h");
+});
+
+var running: bool = true;
+
+const PacketQueue = struct {
+    mutex: std.Thread.Mutex,
+    packets: std.ArrayListUnmanaged(packet.Packet),
+
+    fn init() PacketQueue {
+        return .{
+            .mutex = .{},
+            .packets = .{},
+        };
+    }
+
+    fn deinit(self: *PacketQueue, allocator: std.mem.Allocator) void {
+        self.packets.deinit(allocator);
+    }
+
+    fn push(self: *PacketQueue, allocator: std.mem.Allocator, pkt: packet.Packet) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        try self.packets.append(allocator, pkt);
+    }
+
+    fn pop_all(self: *PacketQueue, allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(packet.Packet)) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        for (self.packets.items) |pkt| {
+            try out.append(allocator, pkt);
+        }
+        self.packets.clearRetainingCapacity();
+    }
+};
+
+fn capture_thread_func(
+    device: []const u8,
+    filter: Filter,
+    queue: *PacketQueue,
+    allocator: std.mem.Allocator,
+) void {
+    var errbuf: [1024]u8 = undefined;
+
+    const chan = c.pcap_create(@ptrCast(device.ptr), &errbuf);
+    if (chan == null) {
+        std.log.err("Failed to create pcap channel", .{});
+        return;
+    }
+    defer c.pcap_close(chan);
+
+    _ = c.pcap_set_promisc(chan, 0);
+    _ = c.pcap_setnonblock(chan, 1, &errbuf);
+
+    if (c.pcap_activate(chan) != 0) {
+        std.log.err("Failed to activate pcap", .{});
+        return;
+    }
+
+    const dlt = c.pcap_datalink(chan);
+
+    while (running) {
+        var hdr: [*c]c.struct_pcap_pkthdr = undefined;
+        var buf: [*c]const u8 = undefined;
+
+        const res = c.pcap_next_ex(chan, &hdr, &buf);
+        if (res == 1) {
+            if (packet.Packet.init(dlt, buf, @ptrCast(hdr), std.builtin.Endian.big)) |pkt| {
+                if (filter.match_w_packet(pkt)) {
+                    queue.push(allocator, pkt) catch |err| {
+                        std.log.err("Failed to queue packet: {any}", .{err});
+                    };
+                }
+            }
+        } else if (res == -1) {
+            std.log.err("Pcap error: {s}", .{c.pcap_geterr(chan)});
+            break;
+        }
+
+        std.Thread.sleep(std.time.ns_per_ms); // 1ms sleep to prevent busy-waiting
+    }
+}
 
 fn coloredLog(
     comptime message_level: std.log.Level,
@@ -75,6 +160,14 @@ pub fn main() !void {
         Args.help("sniff_zig");
     }
 
+    if (args.gui) {
+        try run_gui_mode(allocator, args);
+    } else {
+        try run_cli_mode(allocator, args);
+    }
+}
+
+fn run_cli_mode(_: std.mem.Allocator, args: Args) !void {
     if (args.verbose) {
         std.log.info("Starting packet capture on device: {s}", .{args.device});
     }
@@ -190,4 +283,47 @@ pub fn main() !void {
 
     std.log.err("Can't open requested device: {s}", .{args.device});
     c.pcap_freealldevs(alldevs);
+}
+
+fn run_gui_mode(allocator: std.mem.Allocator, args: Args) !void {
+    std.log.info("Starting GUI mode", .{});
+
+    const filter = try Filter.init(args) orelse return error.BAD;
+
+    var queue = PacketQueue.init();
+    defer queue.deinit(allocator);
+
+    var gui = PacketGui.init(allocator);
+    defer gui.deinit();
+
+    const capture_thread = try std.Thread.spawn(.{}, capture_thread_func, .{
+        args.device,
+        filter,
+        &queue,
+        allocator,
+    });
+    defer capture_thread.join();
+
+    var pending_packets: std.ArrayListUnmanaged(packet.Packet) = .{};
+    defer pending_packets.deinit(allocator);
+
+    rl.InitWindow(1200, 800, "sniff - Packet Capture");
+    defer rl.CloseWindow();
+    rl.SetTargetFPS(60);
+
+    while (!rl.WindowShouldClose()) {
+        queue.pop_all(allocator, &pending_packets) catch {};
+
+        for (pending_packets.items) |pkt| {
+            gui.add_packet(pkt) catch |err| {
+                std.log.err("Failed to add packet to GUI: {any}", .{err});
+            };
+        }
+        pending_packets.clearRetainingCapacity();
+
+        gui.handle_input();
+        gui.draw();
+    }
+
+    running = false;
 }

@@ -19,6 +19,9 @@ dst_ip: ?[]const u8 = null,
 src_port: ?[]const u8 = null,
 dst_port: ?[]const u8 = null,
 
+// Display options
+gui: bool = false,
+
 it: std.process.ArgIterator,
 
 const Option = enum {
@@ -39,6 +42,7 @@ const Option = enum {
     @"--dst-ip",
     @"--src-port",
     @"--dst-port",
+    @"--gui",
 };
 
 pub fn help(process_name: []const u8) noreturn {
@@ -63,6 +67,9 @@ pub fn help(process_name: []const u8) noreturn {
         \\  --dst-ip <address>     Filter by destination IP address
         \\  --src-port <port>      Filter by source port
         \\  --dst-port <port>      Filter by destination port
+        \\
+        \\DISPLAY OPTIONS:
+        \\  --gui                  Launch GUI mode (raylib)
         \\
         \\EXAMPLES:
         \\  {s} -d en0                      # Sniff on device en0
@@ -98,6 +105,9 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var dst_ip: ?[]const u8 = null;
     var src_port: ?[]const u8 = null;
     var dst_port: ?[]const u8 = null;
+
+    // Display options
+    var gui: bool = false;
 
     while (args.next()) |arg| {
         const option = std.meta.stringToEnum(Option, arg) orelse {
@@ -161,6 +171,9 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                     help(process_name);
                 };
             },
+            .@"--gui" => {
+                gui = true;
+            },
         }
     }
 
@@ -177,6 +190,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .dst_ip = dst_ip,
         .src_port = src_port,
         .dst_port = dst_port,
+        .gui = gui,
         .it = args,
     };
 }
