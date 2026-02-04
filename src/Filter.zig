@@ -9,8 +9,13 @@ pub const TransportType = enum(u8) {
     can,
 };
 
+pub const ApplicationType = enum(u8) {
+    wireguard,
+};
+
 pub const Filter = struct {
     transport: ?TransportType = null,
+    application: ?ApplicationType = null,
     src_ip: ?[4]u8 = null,
     dst_ip: ?[4]u8 = null,
     src_port: ?u16 = null,
@@ -48,6 +53,7 @@ pub const Filter = struct {
         if (args.udp) filter.transport = .udp;
         if (args.can) filter.transport = .can;
         if (args.icmp) filter.transport = .icmp;
+        if (args.wireguard) filter.application = .wireguard;
 
         if (args.dst_ip) |ip| {
             filter.dst_ip = parseIpv4(ip) orelse {
@@ -85,6 +91,9 @@ pub const Filter = struct {
         }
         if (self.dst_port) |port| {
             std.log.info("  dst-port: {d}", .{port});
+        }
+        if (self.application) |app| {
+            std.log.info("  application: {s}", .{@tagName(app)});
         }
     }
 
@@ -147,6 +156,12 @@ pub const Filter = struct {
             } else {
                 return false;
             }
+        }
+
+        if (self.application) |app| {
+            if (pkt.application) |x| {
+                if (!std.mem.eql(u8, @tagName(app), @tagName(x))) return false;
+            } else return false;
         }
 
         return true;

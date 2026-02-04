@@ -13,6 +13,9 @@ udp: bool,
 icmp: bool,
 can: bool,
 
+// application filters
+wireguard: bool,
+
 // IP/port filters
 src_ip: ?[]const u8 = null,
 dst_ip: ?[]const u8 = null,
@@ -39,6 +42,7 @@ const Option = enum {
     @"--dst-ip",
     @"--src-port",
     @"--dst-port",
+    @"--wireguard",
 };
 
 pub fn help(process_name: []const u8) noreturn {
@@ -57,6 +61,8 @@ pub fn help(process_name: []const u8) noreturn {
         \\  --udp                  Show only UDP packets
         \\  --icmp                 Show only ICMP packets
         \\  --can                  Show only CAN packets
+        \\APPLICATION FILTERS
+        \\  --wireguard            Show only wireguard packets
         \\
         \\IP/PORT FILTERS:
         \\  --src-ip <address>     Filter by source IP address
@@ -92,6 +98,8 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var udp: bool = false;
     var icmp: bool = false;
     var can: bool = false;
+
+    var wireguard: bool = false;
 
     // IP/port filters
     var src_ip: ?[]const u8 = null;
@@ -161,6 +169,9 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                     help(process_name);
                 };
             },
+            .@"--wireguard" => {
+                wireguard = true;
+            },
         }
     }
 
@@ -177,6 +188,7 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .dst_ip = dst_ip,
         .src_port = src_port,
         .dst_port = dst_port,
+        .wireguard = wireguard,
         .it = args,
     };
 }

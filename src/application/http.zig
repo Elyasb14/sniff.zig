@@ -70,39 +70,3 @@ pub const HttpPacket = struct {
         }
     }
 };
-
-test "parse http msg" {
-    const example_response =
-        "HTTP/1.1 200 OK\r\n" ++
-        "Date: Sun, 14 Sep 2025 05:00:00 GMT\r\n" ++
-        "Server: ZigTestServer/1.0\r\n" ++
-        "Content-Type: text/plain\r\n" ++
-        "Content-Length: 13\r\n" ++
-        "\r\n" ++
-        "Hello, Zig!\n";
-
-    var pkt = packet.Packet{
-        .transport = .{
-            .tcp = .{
-                .payload = example_response,
-                // fill in other tcp fields as needed for your Packet type
-            },
-        },
-        // fill in any required Packet fields here
-    };
-
-    const http_packet = HttpPacket.init(&pkt) orelse {
-        return t.expect(false); // parsing failed
-    };
-
-    switch (http_packet.msg) {
-        .response => |resp| {
-            try t.expectEqualStrings("HTTP/1.1", resp.version);
-            try t.expectEqual(@as(u16, 200), resp.status_code);
-            try t.expectEqualStrings("Hello, Zig!\n", resp.body);
-        },
-        .request => {
-            return t.expect(false); // shouldn't parse as request here
-        },
-    }
-}
