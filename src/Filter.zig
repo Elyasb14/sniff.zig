@@ -159,9 +159,14 @@ pub const Filter = struct {
         }
 
         if (self.application) |app| {
-            if (pkt.application) |x| {
-                if (!std.mem.eql(u8, @tagName(app), @tagName(x))) return false;
-            } else return false;
+            if (pkt.application) |pkt_app| {
+                const matches = switch (app) {
+                    .wireguard => std.meta.activeTag(pkt_app) == .wireguard,
+                };
+                if (!matches) return false;
+            } else {
+                return false;
+            }
         }
 
         return true;

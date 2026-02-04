@@ -251,7 +251,6 @@ pub const Packet = struct {
                 switch (eth.ether_type) {
                     0x0800 => pkt.parse_ipv4(buf[14..]),
                     0x86dd => {
-                        std.log.err("IPv6 not supported", .{});
                         return null;
                     },
                     else => return null,
@@ -262,7 +261,6 @@ pub const Packet = struct {
                 switch (version) {
                     4 => pkt.parse_ipv4(buf[0..]),
                     6 => {
-                        std.log.err("IPv6 not supported", .{});
                         return null;
                     },
                     else => return null,
@@ -273,7 +271,6 @@ pub const Packet = struct {
                 switch (family) {
                     2 => pkt.parse_ipv4(buf[4..]),
                     24 => {
-                        std.log.err("IPv6 not supported", .{});
                         return null;
                     },
                     else => return null,
