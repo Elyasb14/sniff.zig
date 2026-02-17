@@ -102,16 +102,24 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var wireguard: bool = false;
 
     // IP/port filters
-    var src_ip: ?[]const u8 = null;
-    var dst_ip: ?[]const u8 = null;
-    var src_port: ?[]const u8 = null;
-    var dst_port: ?[]const u8 = null;
+    var src_ips: ?[][]const u8 = null;
+    var dst_ips: ?[][]const u8 = null;
+    var src_ports: ?[][]const u8 = null;
+    var dst_ports: ?[][]const u8 = null;
+
+    var collector: std.ArrayListUnmanaged([]const u8) = .initCapacity(allocator, 32);
+    defer collector.deinit(allocator);
 
     while (args.next()) |arg| {
+
+        k
+
         const option = std.meta.stringToEnum(Option, arg) orelse {
             std.debug.print("Error: Unknown option '{s}'\n\n", .{arg});
             help(process_name);
         };
+        
+
 
         switch (option) {
             .@"--device", .@"-d" => {
@@ -146,6 +154,10 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
                 can = true;
             },
             .@"--src-ip" => {
+
+
+
+
                 src_ip = args.next() orelse {
                     std.debug.print("Error: --src-ip requires an IP address\n\n", .{});
                     help(process_name);
