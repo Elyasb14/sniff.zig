@@ -17,10 +17,10 @@ can: bool,
 wireguard: bool,
 
 // IP/port filters
-src_ip: ?[]const u8 = null,
-dst_ip: ?[]const u8 = null,
-src_port: ?[]const u8 = null,
-dst_port: ?[]const u8 = null,
+src_ips: ?[][]const u8 = null,
+dst_ips: ?[][]const u8 = null,
+src_ports: ?[][]const u8 = null,
+dst_ports: ?[][]const u8 = null,
 
 it: std.process.ArgIterator,
 
@@ -102,24 +102,33 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
     var wireguard: bool = false;
 
     // IP/port filters
-    var src_ips: ?[][]const u8 = null;
-    var dst_ips: ?[][]const u8 = null;
-    var src_ports: ?[][]const u8 = null;
-    var dst_ports: ?[][]const u8 = null;
+    var src_ips_list: ?std.ArrayListUnmanaged([]const u8) = null;
+    var dst_ips_list: ?std.ArrayListUnmanaged([]const u8) = null;
+    var src_ports_list: ?std.ArrayListUnmanaged([]const u8) = null;
+    var dst_ports_list: ?std.ArrayListUnmanaged([]const u8) = null;
 
-    var collector: std.ArrayListUnmanaged([]const u8) = .initCapacity(allocator, 32);
-    defer collector.deinit(allocator);
+    // Defer cleanup in case of error
+    errdefer if (src_ips_list) |*l| l.deinit(allocator);
+    errdefer if (dst_ips_list) |*l| l.deinit(allocator);
+    errdefer if (src_ports_list) |*l| l.deinit(allocator);
+    errdefer if (dst_ports_list) |*l| l.deinit(allocator);
+
+    var collector: ?std.ArrayListUnmanaged([]const u8) = null;
 
     while (args.next()) |arg| {
-
-        k
+        if (collector) |*coll| {
+            if (std.meta.stringToEnum(Option, arg) != null) {
+                collector = null;
+            } else {
+                try coll.append(allocator, arg);
+                continue;
+            }
+        }
 
         const option = std.meta.stringToEnum(Option, arg) orelse {
             std.debug.print("Error: Unknown option '{s}'\n\n", .{arg});
             help(process_name);
         };
-        
-
 
         switch (option) {
             .@"--device", .@"-d" => {
@@ -153,33 +162,22 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
             .@"--can" => {
                 can = true;
             },
+            // Multi-value flags (start collecting)
             .@"--src-ip" => {
-
-
-
-
-                src_ip = args.next() orelse {
-                    std.debug.print("Error: --src-ip requires an IP address\n\n", .{});
-                    help(process_name);
-                };
+                if (src_ips_list == null) src_ips_list = .{};
+                collector = src_ips_list.?;
             },
             .@"--dst-ip" => {
-                dst_ip = args.next() orelse {
-                    std.debug.print("Error: --dst-ip requires an IP address\n\n", .{});
-                    help(process_name);
-                };
+                if (dst_ips_list == null) dst_ips_list = .{};
+                collector = dst_ips_list.?;
             },
             .@"--src-port" => {
-                src_port = args.next() orelse {
-                    std.debug.print("Error: --src-port requires a port number\n\n", .{});
-                    help(process_name);
-                };
+                if (src_ports_list == null) src_ports_list = .{};
+                collector = src_ports_list.?;
             },
             .@"--dst-port" => {
-                dst_port = args.next() orelse {
-                    std.debug.print("Error: --dst-port requires a port number\n\n", .{});
-                    help(process_name);
-                };
+                if (dst_ports_list == null) dst_ports_list = .{};
+                collector = dst_ports_list.?;
             },
             .@"--wireguard" => {
                 wireguard = true;
@@ -196,10 +194,10 @@ pub fn parse(allocator: std.mem.Allocator) !Args {
         .udp = udp,
         .icmp = icmp,
         .can = can,
-        .src_ip = src_ip,
-        .dst_ip = dst_ip,
-        .src_port = src_port,
-        .dst_port = dst_port,
+        .src_ips = if (src_ips_list) |*l| try l.toOwnedSlice(allocator) else &[_][]const u8{},
+        .dst_ips = if (dst_ips_list) |*l| try l.toOwnedSlice(allocator) else &[_][]const u8{},
+        .src_ports = if (src_ports_list) |*l| try l.toOwnedSlice(allocator) else &[_][]const u8{},
+        .dst_ports = if (dst_ports_list) |*l| try l.toOwnedSlice(allocator) else &[_][]const u8{},
         .wireguard = wireguard,
         .it = args,
     };
